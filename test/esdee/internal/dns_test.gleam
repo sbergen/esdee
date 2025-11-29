@@ -49,11 +49,11 @@ pub fn encode_question_test() {
 }
 
 pub fn decode_records_fail_test() {
-  assert dns.decode_records(<<"Not valid":utf8>>) == Error(Nil)
+  assert dns.decode_records(<<"Not valid":utf8>>) == Error(dns.InvalidData)
 }
 
-pub fn decode_records_skip_question_test() {
-  assert dns.decode_records(query_bits) == Ok([])
+pub fn decode_records_question_test() {
+  assert dns.decode_records(query_bits) == Error(dns.NotAnAnswer)
 }
 
 pub fn decode_records_test() {

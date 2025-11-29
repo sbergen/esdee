@@ -23,10 +23,10 @@ decode_records(Bits) ->
           Resources = lists:filtermap(fun map_resource/1, Record#dns_rec.arlist),
           {ok, Answers ++ Resources};
         _ ->
-          {ok, []}
+          {error, not_an_answer}
       end;
     _ ->
-      {error, nil}
+      {error, invalid_data}
   end.
 
 map_answer(Answer) ->
