@@ -7,7 +7,7 @@
 
 Esdee is a work-in-progress DNS-SD discovery client for Gleam on Erlang.
 
-See the `dev` directory for an example for now.
+See the [esdee_dev.gleam](dev/esdee_dev.gleam) for an example for now.
 
 <!--
 ```sh

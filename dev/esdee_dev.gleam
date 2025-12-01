@@ -3,7 +3,6 @@ import gleam/erlang/process.{type Subject}
 import gleam/io
 import gleam/option.{Some}
 import gleam/string
-import toss
 
 type Discovered {
   ServiceType(String)
