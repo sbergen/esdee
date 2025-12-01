@@ -3,7 +3,7 @@ import gleam/bool
 import gleam/dict.{type Dict}
 import gleam/erlang/process.{type Subject}
 import gleam/list
-import gleam/option.{type Option, None, Some}
+import gleam/option.{None, Some}
 import gleam/otp/actor
 import gleam/result
 import gleam/set.{type Set}
@@ -12,6 +12,10 @@ import toss
 const mds_port = 5353
 
 const all_services_type = "_services._dns-sd._udp.local"
+
+// TODO: should I keep this re-export, or do something else?
+pub type IpAddress =
+  toss.IpAddress
 
 /// Describes a service fully discovered via DNS-SD.
 pub type ServiceDescription {
@@ -35,10 +39,8 @@ pub type ServiceDescription {
     port: Int,
     /// Any TXT records that the service advertises (can be empty).
     txt_values: List(String),
-    /// The IPv4 address, if advertised.
-    ipv4: Option(#(Int, Int, Int, Int)),
-    /// The IPv6 address, if advertised.
-    ipv6: Option(#(Int, Int, Int, Int, Int, Int, Int, Int)),
+    /// The resolved IP address
+    ip: IpAddress,
   )
 }
 
@@ -288,24 +290,26 @@ fn description_from_records(
   service_type: String,
   instance_name: String,
 ) -> Result(ServiceDescription, Nil) {
-  use #(priority, weight, port, target_name) <- result.try(
-    list.find_map(records, fn(record) {
-      case record {
-        dns.SrvRecord(priority:, weight:, port:, target_name:, ..) ->
-          Ok(#(priority, weight, port, target_name))
-        _ -> Error(Nil)
-      }
-    }),
-  )
+  let try_find = fn(with: fn(ResourceRecord) -> Result(a, Nil), apply) {
+    result.try(list.find_map(records, with), apply)
+  }
 
-  let #(ipv4, ipv6) =
-    list.fold(records, #(None, None), fn(ips, record) {
-      case record {
-        dns.ARecord(ip:, ..) -> #(Some(ip), ips.1)
-        dns.AaaaRecord(ip:, ..) -> #(ips.0, Some(ip))
-        _ -> ips
-      }
-    })
+  use #(priority, weight, port, target_name) <- try_find(fn(record) {
+    case record {
+      dns.SrvRecord(priority:, weight:, port:, target_name:, ..) ->
+        Ok(#(priority, weight, port, target_name))
+      _ -> Error(Nil)
+    }
+  })
+
+  use ip <- try_find(fn(record) {
+    case record {
+      dns.ARecord(ip:, ..) -> Ok(toss.Ipv4Address(ip.0, ip.1, ip.2, ip.3))
+      dns.AaaaRecord(ip:, ..) ->
+        Ok(toss.Ipv6Address(ip.0, ip.1, ip.2, ip.3, ip.4, ip.5, ip.6, ip.7))
+      _ -> Error(Nil)
+    }
+  })
 
   let txt_values =
     list.flat_map(records, fn(record) {
@@ -315,19 +319,14 @@ fn description_from_records(
       }
     })
 
-  case option.is_some(ipv4) || option.is_some(ipv6) {
-    True ->
-      Ok(ServiceDescription(
-        service_type:,
-        instance_name:,
-        target_name:,
-        priority:,
-        weight:,
-        port:,
-        txt_values:,
-        ipv4:,
-        ipv6:,
-      ))
-    False -> Error(Nil)
-  }
+  Ok(ServiceDescription(
+    service_type:,
+    instance_name:,
+    target_name:,
+    priority:,
+    weight:,
+    port:,
+    txt_values:,
+    ip:,
+  ))
 }

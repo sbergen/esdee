@@ -3,6 +3,7 @@ import gleam/erlang/process.{type Subject}
 import gleam/io
 import gleam/option.{Some}
 import gleam/string
+import toss
 
 type Discovered {
   ServiceType(String)
@@ -45,17 +46,12 @@ fn recieve_forever(
     }
 
     ServiceDetails(description) -> {
-      let assert Some(ip) =
-        option.or(
-          description.ipv4 |> option.map(string.inspect),
-          description.ipv6 |> option.map(string.inspect),
-        )
       io.println(
         description.service_type
         <> " -> "
         <> description.target_name
         <> " @ "
-        <> ip,
+        <> toss.ip_to_string(description.ip),
       )
     }
   }
