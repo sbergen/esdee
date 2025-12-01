@@ -48,7 +48,7 @@ fn recieve_forever(
       let assert Some(ip) =
         option.or(
           description.ipv4 |> option.map(string.inspect),
-          description.ipv4 |> option.map(string.inspect),
+          description.ipv6 |> option.map(string.inspect),
         )
       io.println(
         description.service_type
