@@ -42,15 +42,20 @@ pub type ServiceDescription {
   )
 }
 
-// For future options, e.g. IPv6
+/// For future options, e.g. IPv6
+// TODO: Expose some of the existing options, 
+// TODO see if the IP Is useful for testing, or if I should use a different port instead
 pub opaque type Options {
   Options(start_timeout: Int, max_data_size: Int, broadcast_ip: toss.IpAddress)
 }
 
+/// A handle to a service discovery actor.
 pub opaque type ServiceDiscovery {
   ServiceDiscovery(subject: Subject(Msg))
 }
 
+/// Start configuring a service discovery actor,
+/// which can be started with `start`.
 pub fn new() -> Options {
   Options(
     start_timeout: 2000,
@@ -59,10 +64,14 @@ pub fn new() -> Options {
   )
 }
 
+/// Stops the service discovery actor.
 pub fn stop(discovery: ServiceDiscovery) -> Nil {
   process.send(discovery.subject, Stop)
 }
 
+/// Subscribes the given subject to all discovered service types.
+/// Note that the same service type might be reported by multiple peers.
+/// You will also need to call `poll_service_types` to discover services quickly.
 pub fn subscribe_to_service_types(
   discovery: ServiceDiscovery,
   subject: Subject(String),
@@ -70,11 +79,14 @@ pub fn subscribe_to_service_types(
   process.send(discovery.subject, SubscribeToServiceTypes(subject))
 }
 
+/// Sends a DNS-SD question querying all the available service types in the local network.
 pub fn poll_service_types(discovery: ServiceDiscovery) -> Result(Nil, Nil) {
-  // TODO: timeout?
+  // TODO: configurable timeout?
   process.call(discovery.subject, 1000, PollServiceTypes)
 }
 
+/// Subscribes the given subject to all discovered service details.
+/// You will also need to call `poll_service_details` to discover services quickly.
 pub fn subscribe_to_service_details(
   discovery: ServiceDiscovery,
   service_type: String,
@@ -86,6 +98,7 @@ pub fn subscribe_to_service_details(
   )
 }
 
+/// Sends a DNS-SD question querying the given service type in the local network.
 pub fn poll_service_details(
   discovery: ServiceDiscovery,
   service_type: String,
@@ -120,6 +133,7 @@ type State {
   )
 }
 
+/// Starts the service discovery actor.
 pub fn start(
   options: Options,
 ) -> Result(actor.Started(ServiceDiscovery), actor.StartError) {
