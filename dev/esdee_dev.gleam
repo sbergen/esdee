@@ -1,16 +1,65 @@
 import esdee
+import gleam/erlang/process.{type Subject}
+import gleam/io
+import gleam/option.{Some}
+import gleam/string
+import toss
+
+type Discovered {
+  ServiceType(String)
+  ServiceDetails(esdee.ServiceDescription)
+}
 
 pub fn main() {
   let assert Ok(discovery) =
     esdee.new()
     |> esdee.start()
+  let discovery = discovery.data
 
-  //let assert Ok(_) = esdee.discover(discovery, "_googlecast._tcp.local")
-  let assert Ok(_) = esdee.discover(discovery, "_services._dns-sd._udp.local")
-  recieve_forever(discovery)
+  let types = process.new_subject()
+  let details = process.new_subject()
+
+  esdee.subscribe_to_service_types(discovery, types)
+  let assert Ok(_) = esdee.poll_service_types(discovery)
+
+  let selector =
+    process.new_selector()
+    |> process.select_map(types, ServiceType)
+    |> process.select_map(details, ServiceDetails)
+
+  recieve_forever(discovery, selector, details)
 }
 
-fn recieve_forever(discovery) {
-  echo esdee.receive_next(discovery, 10_000)
-  recieve_forever(discovery)
+fn recieve_forever(
+  discovery: esdee.ServiceDiscovery,
+  selector: process.Selector(Discovered),
+  details: Subject(esdee.ServiceDescription),
+) -> Nil {
+  let discovered = process.selector_receive_forever(selector)
+
+  case discovered {
+    ServiceType(service_type) -> {
+      io.println("Discovered service type: " <> service_type)
+      esdee.subscribe_to_service_details(discovery, service_type, details)
+      let assert Ok(_) = esdee.poll_service_details(discovery, service_type)
+      Nil
+    }
+
+    ServiceDetails(description) -> {
+      let assert Some(ip) =
+        option.or(
+          description.ipv4 |> option.map(string.inspect),
+          description.ipv4 |> option.map(string.inspect),
+        )
+      io.println(
+        description.service_type
+        <> " -> "
+        <> description.target_name
+        <> " @ "
+        <> ip,
+      )
+    }
+  }
+
+  recieve_forever(discovery, selector, details)
 }
