@@ -6,7 +6,7 @@ packages = [
   { name = "gleam_otp", version = "1.2.0", build_tools = ["gleam"], requirements = ["gleam_erlang", "gleam_stdlib"], otp_app = "gleam_otp", source = "hex", outer_checksum = "BA6A294E295E428EC1562DC1C11EA7530DCB981E8359134BEABC8493B7B2258E" },
   { name = "gleam_stdlib", version = "0.65.0", build_tools = ["gleam"], requirements = [], otp_app = "gleam_stdlib", source = "hex", outer_checksum = "7C69C71D8C493AE11A5184828A77110EB05A7786EBF8B25B36A72F879C3EE107" },
   { name = "gleeunit", version = "1.7.0", build_tools = ["gleam"], requirements = ["gleam_stdlib"], otp_app = "gleeunit", source = "hex", outer_checksum = "CD701726CBCE5588B375D157B4391CFD0F2F134CD12D9B6998A395484DE05C58" },
-  { name = "glip", version = "1.0.0", build_tools = ["gleam"], requirements = ["gleam_stdlib"], source = "local", path = "../glip" },
+  { name = "glip", version = "1.0.0", build_tools = ["gleam"], requirements = ["gleam_stdlib"], otp_app = "glip", source = "hex", outer_checksum = "FC12ACF260ED6B900CE0A14BAEB9912498B483D9467189F518BE06C7E02D91DE" },
   { name = "toss", version = "1.0.0-rc3", build_tools = ["gleam"], requirements = ["gleam_erlang", "gleam_stdlib"], otp_app = "toss", source = "hex", outer_checksum = "07DEA0A8DFCCF1B5F723CC7C0F7122CC916D27CFE88D431FA6C16B6A4074C615" },
 ]
 
@@ -15,5 +15,5 @@ gleam_erlang = { version = ">= 1.3.0 and < 2.0.0" }
 gleam_otp = { version = ">= 1.2.0 and < 2.0.0" }
 gleam_stdlib = { version = ">= 0.44.0 and < 2.0.0" }
 gleeunit = { version = ">= 1.0.0 and < 2.0.0" }
-glip = { path = "../glip" }
+glip = { version = ">= 1.0.0 and < 2.0.0" }
 toss = { version = "1.0.0-rc3" }
