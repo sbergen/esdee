@@ -45,7 +45,7 @@ pub type ServiceDescription {
 // TODO: Expose some of the existing options, 
 // TODO see if the IP Is useful for testing, or if I should use a different port instead
 pub opaque type Options {
-  Options(start_timeout: Int, max_data_size: Int, broadcast_ip: toss.IpAddress)
+  Options(start_timeout: Int, max_data_size: Int, broadcast_ip: IpAddress)
 }
 
 /// A handle to a service discovery actor.
@@ -56,11 +56,8 @@ pub opaque type ServiceDiscovery {
 /// Start configuring a service discovery actor,
 /// which can be started with `start`.
 pub fn new() -> Options {
-  Options(
-    start_timeout: 2000,
-    max_data_size: 4096,
-    broadcast_ip: toss.Ipv4Address(224, 0, 0, 251),
-  )
+  let broadcast_ip = constant_ip("224.0.0.251")
+  Options(start_timeout: 2000, max_data_size: 4096, broadcast_ip:)
 }
 
 /// Stops the service discovery actor.
@@ -146,7 +143,7 @@ pub fn start(
       |> result.replace_error("Could not open socket"),
     )
 
-    let local_addr = toss.Ipv4Address(0, 0, 0, 0)
+    let local_addr = constant_ip("0.0.0.0")
     use _ <- result.try(
       toss.join_multicast_group(socket, options.broadcast_ip, local_addr)
       |> result.replace_error("Could not join multicast group"),
@@ -324,4 +321,10 @@ fn description_from_records(
     txt_values:,
     ip:,
   ))
+}
+
+/// Expects an IP to be valid, DON'T use for dynamic strings.
+fn constant_ip(ip: String) -> IpAddress {
+  let assert Ok(ip) = glip.parse_ip(ip) as "Did the IP standard change?"
+  ip
 }
