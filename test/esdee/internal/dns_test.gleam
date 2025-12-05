@@ -1,4 +1,5 @@
 import esdee/internal/dns.{ARecord, AaaaRecord, PtrRecord, SrvRecord, TxtRecord}
+import glip
 
 // This is a know good query, to protect against changes in the internal inet_dns module.
 const query_bits = <<
@@ -444,6 +445,7 @@ pub fn decode_records_test() {
     101,
   >>
 
+  let assert Ok(expected_ip) = glip.parse_ip("10.10.2.101")
   let assert Ok(records) = dns.decode_records(data)
   assert records
     == [
@@ -476,7 +478,7 @@ pub fn decode_records_test() {
         8009,
         "9693d58e-3537-dddb-118b-7b7d17f9c1c2.local",
       ),
-      ARecord("9693d58e-3537-dddb-118b-7b7d17f9c1c2.local", #(10, 10, 2, 101)),
+      ARecord("9693d58e-3537-dddb-118b-7b7d17f9c1c2.local", expected_ip),
     ]
 }
 
@@ -705,6 +707,8 @@ pub fn decode_records_aaa_test() {
     212,
     206,
   >>
+  let assert Ok(expected_ip) =
+    glip.parse_ip("2001:14ba:a194:2402:152e:22c1:d60:d4ce")
   let assert Ok(records) = dns.decode_records(aaaa_response)
   assert records
     == [
@@ -723,15 +727,6 @@ pub fn decode_records_aaa_test() {
         10_001,
         "9693d58e-3537-dddb-118b-7b7d17f9c1c2.local",
       ),
-      AaaaRecord("9693d58e-3537-dddb-118b-7b7d17f9c1c2.local", #(
-        8193,
-        5306,
-        41_364,
-        9218,
-        5422,
-        8897,
-        3424,
-        54_478,
-      )),
+      AaaaRecord("9693d58e-3537-dddb-118b-7b7d17f9c1c2.local", expected_ip),
     ]
 }

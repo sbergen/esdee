@@ -3,6 +3,7 @@ import gleam/erlang/process.{type Subject}
 import gleam/io
 import gleam/option.{Some}
 import gleam/string
+import glip
 import toss
 
 type Discovered {
@@ -51,7 +52,7 @@ fn recieve_forever(
         <> " -> "
         <> description.target_name
         <> " @ "
-        <> toss.ip_to_string(description.ip),
+        <> glip.ip_to_string(description.ip),
       )
     }
   }

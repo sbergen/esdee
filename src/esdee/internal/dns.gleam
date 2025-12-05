@@ -1,5 +1,7 @@
 //// Minimal implementation of DNS message encoding/decoding for DNS-SD
 
+import glip.{type IpAddress}
+
 /// Encodes a DNS-SD question for the given domain
 @external(erlang, "esdee_ffi", "encode_question")
 pub fn encode_question(domain: String) -> BitArray
@@ -15,8 +17,8 @@ pub type ResourceRecord {
     target_name: String,
   )
   TxtRecord(instance_name: String, values: List(String))
-  ARecord(target_name: String, ip: #(Int, Int, Int, Int))
-  AaaaRecord(target_name: String, ip: #(Int, Int, Int, Int, Int, Int, Int, Int))
+  ARecord(target_name: String, ip: IpAddress)
+  AaaaRecord(target_name: String, ip: IpAddress)
 }
 
 pub type DecodeError {

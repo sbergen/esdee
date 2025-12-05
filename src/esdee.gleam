@@ -7,15 +7,12 @@ import gleam/option.{None, Some}
 import gleam/otp/actor
 import gleam/result
 import gleam/set.{type Set}
+import glip.{type IpAddress}
 import toss
 
 const mds_port = 5353
 
 const all_services_type = "_services._dns-sd._udp.local"
-
-// TODO: should I keep this re-export, or do something else?
-pub type IpAddress =
-  toss.IpAddress
 
 /// Describes a service fully discovered via DNS-SD.
 pub type ServiceDescription {
@@ -304,9 +301,7 @@ fn description_from_records(
 
   use ip <- try_find(fn(record) {
     case record {
-      dns.ARecord(ip:, ..) -> Ok(toss.Ipv4Address(ip.0, ip.1, ip.2, ip.3))
-      dns.AaaaRecord(ip:, ..) ->
-        Ok(toss.Ipv6Address(ip.0, ip.1, ip.2, ip.3, ip.4, ip.5, ip.6, ip.7))
+      dns.ARecord(ip:, ..) | dns.AaaaRecord(ip:, ..) -> Ok(ip)
       _ -> Error(Nil)
     }
   })
