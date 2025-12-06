@@ -90,7 +90,7 @@ fn set_address_family(
 
 /// The result of successfully parsing a UDP datagram into an DNS-SD update.
 pub type ServiceDiscveryUpdate {
-  ServiceTypeDiscoverd(String)
+  ServiceTypeDiscovered(String)
   ServiceDiscovered(ServiceDescription)
 }
 
@@ -145,7 +145,7 @@ pub fn parse_sd_update(data: BitArray) -> Result(ServiceDiscveryUpdate, Nil) {
   use #(ptr_from, ptr_to) <- result.try(find_ptr(records))
 
   use <- bool.lazy_guard(when: ptr_from == all_services_type, return: fn() {
-    Ok(ServiceTypeDiscoverd(ptr_to))
+    Ok(ServiceTypeDiscovered(ptr_to))
   })
 
   // If this wasn't an all services discovery, try to find full details

@@ -2,7 +2,7 @@
 
 import esdee.{
   type ServiceDescription, type ServiceDiscveryUpdate, ServiceDiscovered,
-  ServiceTypeDiscoverd,
+  ServiceTypeDiscovered,
 }
 import gleam/dict.{type Dict}
 import gleam/erlang/process.{type Subject}
@@ -30,6 +30,16 @@ pub fn subscribe_to_service_types(
   Dispatcher(..dispatcher, service_type_subjects:)
 }
 
+pub fn unsubscribe_from_service_types(
+  dispatcher: Dispatcher,
+  subject: Subject(String),
+) -> Dispatcher {
+  let service_type_subjects =
+    dispatcher.service_type_subjects
+    |> set.delete(subject)
+  Dispatcher(..dispatcher, service_type_subjects:)
+}
+
 pub fn subscribe_to_service_details(
   dispatcher: Dispatcher,
   service_type: String,
@@ -47,9 +57,29 @@ pub fn subscribe_to_service_details(
   Dispatcher(..dispatcher, service_detail_subjects:)
 }
 
+pub fn unsubscribe_from_service_details(
+  dispatcher: Dispatcher,
+  service_type: String,
+  subject: Subject(ServiceDescription),
+) -> Dispatcher {
+  let subjects_dict = dispatcher.service_detail_subjects
+  let service_detail_subjects = case dict.get(subjects_dict, service_type) {
+    Error(_) -> subjects_dict
+    Ok(subjects) -> {
+      let subjects = set.delete(subjects, subject)
+      subjects_dict
+      |> case set.is_empty(subjects) {
+        True -> dict.delete(_, service_type)
+        False -> dict.insert(_, service_type, subjects)
+      }
+    }
+  }
+  Dispatcher(..dispatcher, service_detail_subjects:)
+}
+
 pub fn dispatch(dispatcher: Dispatcher, update: ServiceDiscveryUpdate) -> Nil {
   case update {
-    ServiceTypeDiscoverd(service_type) ->
+    ServiceTypeDiscovered(service_type) ->
       set.each(dispatcher.service_type_subjects, process.send(_, service_type))
 
     ServiceDiscovered(description) -> {
