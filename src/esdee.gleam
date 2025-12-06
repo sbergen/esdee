@@ -1,10 +1,10 @@
+///// A utility for dispatching service types and descriptions
+///// and managing related subscriptions.
+
 import esdee/internal/dns.{type ResourceRecord}
 import gleam/bool
-import gleam/dict.{type Dict}
-import gleam/erlang/process.{type Subject}
+import gleam/erlang/process
 import gleam/list
-import gleam/option.{None, Some}
-import gleam/otp/actor
 import gleam/result
 import gleam/set.{type Set}
 import glip.{type AddressFamily, type IpAddress, Ipv4, Ipv6}
@@ -12,7 +12,8 @@ import toss
 
 const mdns_port = 5353
 
-const all_services_type = "_services._dns-sd._udp.local"
+/// The meta-service type for polling for all services
+pub const all_services_type = "_services._dns-sd._udp.local"
 
 /// Describes a service fully discovered via DNS-SD.
 /// Note that the same service might be discovered through both IPv4 and IPv6.
@@ -42,20 +43,14 @@ pub type ServiceDescription {
   )
 }
 
-/// For future options, e.g. IPv6
 // TODO: Expose some of the existing options, 
-
+/// For future options, e.g. IPv6
 pub opaque type Options {
   Options(
     start_timeout: Int,
     max_data_size: Int,
     address_families: Set(AddressFamily),
   )
-}
-
-/// A handle to a service discovery actor.
-pub opaque type ServiceDiscovery {
-  ServiceDiscovery(subject: Subject(Msg))
 }
 
 /// Start configuring a service discovery actor,
@@ -91,238 +86,54 @@ fn set_address_family(
   Options(..options, address_families:)
 }
 
-/// Stops the service discovery actor.
-pub fn stop(discovery: ServiceDiscovery) -> Nil {
-  process.send(discovery.subject, Stop)
+/// The result of successfully parsing a UDP datagram into an DNS-SD update.
+pub type ServiceDiscveryUpdate {
+  ServiceTypeDiscoverd(String)
+  ServiceDiscovered(ServiceDescription)
 }
 
-/// Subscribes the given subject to all discovered service types.
-/// Note that the same service type might be reported by multiple peers.
-/// You will also need to call `poll_service_types` to discover services quickly.
-pub fn subscribe_to_service_types(
-  discovery: ServiceDiscovery,
-  subject: Subject(String),
-) -> Nil {
-  process.send(discovery.subject, SubscribeToServiceTypes(subject))
+/// A pre-processed UDP message
+pub type UdpMessage {
+  /// A processed datagram that was DNS-SD related
+  DnsSdMessage(ServiceDiscveryUpdate)
+  /// A UDP message that was not detected to be DNS-SD-related.
+  OtherUdpMessage(toss.UdpMessage)
 }
 
-/// Sends a DNS-SD question querying all the available service types in the local network.
-/// If there are errors with the socket(s), returns the first error.
-pub fn poll_service_types(
-  discovery: ServiceDiscovery,
-) -> Result(Nil, toss.Error) {
-  // TODO: configurable timeout?
-  process.call(discovery.subject, 1000, PollServiceTypes)
+/// Configure a selector to receive messages from UDP sockets,
+/// pre-processing them to filter separate DNS-SD messages from other messages.
+/// You will also need to call
+/// [`receive_next_datagram_as_message`](#receive_next_datagram_as_message)
+/// to use the selector successfully - once initially,
+/// and again after receiving each message.
+///
+/// Note that this will receive messages from all UDP sockets that the process controls,
+/// rather than any specific one.
+/// If you wish to only handle messages from one socket then use one process per socket.
+pub fn select_processed_udp_messages(
+  selector: process.Selector(a),
+  mapper: fn(UdpMessage) -> a,
+) -> process.Selector(a) {
+  use message <- toss.select_udp_messages(selector)
+  mapper(classify_message(message))
 }
 
-/// Subscribes the given subject to all discovered service details.
-/// You will also need to call `poll_service_details` to discover services quickly.
-pub fn subscribe_to_service_details(
-  discovery: ServiceDiscovery,
-  service_type: String,
-  subject: Subject(ServiceDescription),
-) -> Nil {
-  process.send(
-    discovery.subject,
-    SubscribeToServiceDetails(service_type, subject),
-  )
-}
-
-/// Sends a DNS-SD question querying the given service type in the local network.
-/// If there are errors with the socket(s), returns the first error.
-pub fn poll_service_details(
-  discovery: ServiceDiscovery,
-  service_type: String,
-) -> Result(Nil, toss.Error) {
-  // TODO: timeout?
-  process.call(discovery.subject, 1000, PollServiceDetails(service_type, _))
-}
-
-// TODO: Unsubscribe functions
-
-type Msg {
-  /// The actor messages
-  Stop
-  SubscribeToServiceTypes(subject: Subject(String))
-  SubscribeToServiceDetails(
-    service_type: String,
-    subject: Subject(ServiceDescription),
-  )
-  PollServiceTypes(reply_to: Subject(Result(Nil, toss.Error)))
-  PollServiceDetails(
-    service_type: String,
-    reply_to: Subject(Result(Nil, toss.Error)),
-  )
-  UpdDatagram(socket: toss.Socket, data: BitArray)
-  UdpError(error: String)
-}
-
-/// Socket configuration, for IPv4 or IPv6
-type SocketConfiguration {
-  SocketConfiguration(socket: toss.Socket, broadcast_ip: IpAddress)
-}
-
-/// The actor state
-type State {
-  State(
-    options: Options,
-    sockets: List(SocketConfiguration),
-    service_type_subjects: Set(Subject(String)),
-    service_detail_subjects: Dict(String, Set(Subject(ServiceDescription))),
-  )
-}
-
-/// Starts the service discovery actor.
-pub fn start(
-  options: Options,
-) -> Result(actor.Started(ServiceDiscovery), actor.StartError) {
-  actor.new_with_initialiser(options.start_timeout, fn(self) {
-    use _ <- result.try(case set.is_empty(options.address_families) {
-      False -> Ok(Nil)
-      True -> Error("No IP address family selected")
-    })
-
-    use sockets <- result.try(
-      options.address_families
-      |> set.to_list()
-      |> list.map(open_socket)
-      |> result.all(),
-    )
-
-    let selctor =
-      process.new_selector()
-      |> process.select(self)
-      |> toss.select_udp_messages(fn(udp_msg) {
-        case udp_msg {
-          toss.Datagram(socket:, data:, ..) -> UpdDatagram(socket, data)
-          toss.UdpError(_, e) -> UdpError(toss.describe_error(e))
-        }
-      })
-
-    Ok(
-      actor.initialised(State(options, sockets, set.new(), dict.new()))
-      |> actor.selecting(selctor)
-      |> actor.returning(ServiceDiscovery(self)),
-    )
-  })
-  |> actor.on_message(handle_message)
-  |> actor.start()
-}
-
-fn open_socket(family: AddressFamily) -> Result(SocketConfiguration, String) {
-  use #(socket, broadcast_ip) <- result.try(case family {
-    Ipv4 -> {
-      let broadcast_ip = constant_ip("224.0.0.251")
-      use socket <- result.try(
-        toss.new(mdns_port)
-        |> toss.use_ipv4()
-        |> toss.reuse_address()
-        |> toss.using_interface(broadcast_ip)
-        |> toss.open
-        |> result.replace_error("Could not open IPv4 socket"),
-      )
-
-      let local_addr = constant_ip("0.0.0.0")
-      use _ <- result.try(
-        toss.join_multicast_group(socket, broadcast_ip, local_addr)
-        |> result.replace_error("Could not join multicast group"),
-      )
-
-      Ok(#(socket, broadcast_ip))
-    }
-
-    Ipv6 -> {
-      let broadcast_ip = constant_ip("ff02::fb")
-      use socket <- result.try(
-        toss.new(mdns_port)
-        |> toss.use_ipv6()
-        |> toss.reuse_address()
-        |> toss.open
-        |> result.replace_error("Could not open IPv6 socket"),
-      )
-
-      Ok(#(socket, broadcast_ip))
-    }
-  })
-
-  use _ <- result.try(
-    toss.receive_next_datagram_as_message(socket)
-    |> result.replace_error("Could not configure socket for messages"),
-  )
-
-  Ok(SocketConfiguration(socket, broadcast_ip))
-}
-
-fn handle_message(state: State, msg: Msg) -> actor.Next(State, Msg) {
-  case msg {
-    PollServiceDetails(service_type:, reply_to:) ->
-      poll(state, service_type, reply_to)
-    PollServiceTypes(reply_to:) -> poll(state, all_services_type, reply_to)
-
-    SubscribeToServiceTypes(subject:) -> {
-      let service_type_subjects =
-        state.service_type_subjects
-        |> set.insert(subject)
-      actor.continue(State(..state, service_type_subjects:))
-    }
-
-    SubscribeToServiceDetails(service_type:, subject:) -> {
-      let service_detail_subjects =
-        state.service_detail_subjects
-        |> dict.upsert(service_type, fn(existing) {
-          case existing {
-            Some(existing) -> existing
-            None -> set.new()
-          }
-          |> set.insert(subject)
-        })
-      actor.continue(State(..state, service_detail_subjects:))
-    }
-
-    UpdDatagram(socket:, data:) -> {
-      case toss.receive_next_datagram_as_message(socket) {
-        // This shouldn't really happen, unless something is really wrong AFAIK.
-        Error(_) -> actor.stop_abnormal("UDP message delivery failed")
-
-        Ok(_) -> {
-          // Errors from handle_datagram are fine, we're just abusing result.try
-          let _ = handle_datagram(state, data)
-          actor.continue(state)
-        }
+/// Classifies an UDP message
+pub fn classify_message(message: toss.UdpMessage) -> UdpMessage {
+  case message {
+    toss.Datagram(data:, ..) as datagram ->
+      case parse_sd_update(data) {
+        Error(_) -> OtherUdpMessage(datagram)
+        Ok(update) -> DnsSdMessage(update)
       }
-    }
 
-    // This shouldn't really happen, unless something is really wrong AFAIK.
-    // If I get a practical example of why this could happen, 
-    // we should probably do something else.
-    UdpError(error:) -> actor.stop_abnormal("UDP socket failed: " <> error)
-
-    Stop -> {
-      list.each(state.sockets, fn(config) { toss.close(config.socket) })
-      actor.stop()
-    }
+    other -> OtherUdpMessage(other)
   }
 }
 
-fn poll(
-  state: State,
-  service: String,
-  respond_to: Subject(Result(Nil, toss.Error)),
-) -> actor.Next(State, Msg) {
-  let data = dns.encode_question(service)
-  let result =
-    state.sockets
-    |> list.map(fn(config) {
-      toss.send_to(config.socket, config.broadcast_ip, mdns_port, data)
-    })
-    |> result.all()
-    |> result.replace(Nil)
-
-  process.send(respond_to, result)
-  actor.continue(state)
-}
-
-fn handle_datagram(state: State, data: BitArray) -> Result(Nil, Nil) {
+/// Parses the contents of an UDP datagram into a DNS-SD update,
+/// Returns an error, if the data was not a DNS-SD update or had incomplete data.
+pub fn parse_sd_update(data: BitArray) -> Result(ServiceDiscveryUpdate, Nil) {
   // If we get invalid data, we shouldn't care about it
   use records <- result.try(
     dns.decode_records(data) |> result.replace_error(Nil),
@@ -332,8 +143,7 @@ fn handle_datagram(state: State, data: BitArray) -> Result(Nil, Nil) {
   use #(ptr_from, ptr_to) <- result.try(find_ptr(records))
 
   use <- bool.lazy_guard(when: ptr_from == all_services_type, return: fn() {
-    set.each(state.service_type_subjects, process.send(_, ptr_to))
-    Ok(Nil)
+    Ok(ServiceTypeDiscoverd(ptr_to))
   })
 
   // If this wasn't an all services discovery, try to find full details
@@ -343,13 +153,7 @@ fn handle_datagram(state: State, data: BitArray) -> Result(Nil, Nil) {
     ptr_to,
   ))
 
-  // If we find all the required data, send the result!
-  use subjects <- result.map(dict.get(
-    state.service_detail_subjects,
-    description.service_type,
-  ))
-
-  set.each(subjects, process.send(_, description))
+  Ok(ServiceDiscovered(description))
 }
 
 fn find_ptr(records: List(ResourceRecord)) -> Result(#(String, String), Nil) {
@@ -404,6 +208,139 @@ fn description_from_records(
     txt_values:,
     ip:,
   ))
+}
+
+/// Socket configuration, for IPv4 or IPv6
+type SocketConfiguration {
+  SocketConfiguration(socket: toss.Socket, broadcast_ip: IpAddress)
+}
+
+/// The collection of sockets used for service discovery (one for each address family used)
+pub opaque type Sockets {
+  Sockets(sockets: List(SocketConfiguration))
+}
+
+/// An error that can happen while setting up the UDP sockets.
+pub type SocketSetupError {
+  /// The options had no address family selected
+  NoAddressFamilyEnabled
+  /// Opening the socket failed
+  FailedToOpenSocket(AddressFamily)
+  /// Joining the multicast group failed (only relevant for IPv4)
+  FailedToJoinMulticastGroup
+  /// Setting the socket(s) to active mode failed
+  SetActiveModeFailed
+}
+
+pub fn describe_setup_error(error: SocketSetupError) -> String {
+  case error {
+    FailedToJoinMulticastGroup -> "Failed to join (IPv4) multicast group"
+    NoAddressFamilyEnabled -> "No address family enabled in options"
+    SetActiveModeFailed -> "Setting socket(s) to active mode failed"
+
+    FailedToOpenSocket(family) ->
+      "Failed to open IPv"
+      <> case family {
+        Ipv4 -> "4"
+        Ipv6 -> "6"
+      }
+      <> " socket"
+  }
+}
+
+/// Opens and sets ups the service discovery UDP socket(s).
+pub fn set_up_sockets(options: Options) -> Result(Sockets, SocketSetupError) {
+  use _ <- result.try(case set.is_empty(options.address_families) {
+    False -> Ok(Nil)
+    True -> Error(NoAddressFamilyEnabled)
+  })
+
+  use sockets <- result.try(
+    options.address_families
+    |> set.to_list()
+    |> list.map(open_socket)
+    |> result.all(),
+  )
+
+  Ok(Sockets(sockets))
+}
+
+fn open_socket(
+  family: AddressFamily,
+) -> Result(SocketConfiguration, SocketSetupError) {
+  use #(socket, broadcast_ip) <- result.try(case family {
+    Ipv4 -> {
+      let broadcast_ip = constant_ip("224.0.0.251")
+      use socket <- result.try(
+        toss.new(mdns_port)
+        |> toss.use_ipv4()
+        |> toss.reuse_address()
+        |> toss.using_interface(broadcast_ip)
+        |> toss.open
+        |> result.replace_error(FailedToOpenSocket(family)),
+      )
+
+      let local_addr = constant_ip("0.0.0.0")
+      use _ <- result.try(
+        toss.join_multicast_group(socket, broadcast_ip, local_addr)
+        |> result.replace_error(FailedToJoinMulticastGroup),
+      )
+
+      Ok(#(socket, broadcast_ip))
+    }
+
+    Ipv6 -> {
+      let broadcast_ip = constant_ip("ff02::fb")
+      use socket <- result.try(
+        toss.new(mdns_port)
+        |> toss.use_ipv6()
+        |> toss.reuse_address()
+        |> toss.open
+        |> result.replace_error(FailedToOpenSocket(family)),
+      )
+
+      Ok(#(socket, broadcast_ip))
+    }
+  })
+
+  use _ <- result.try(
+    toss.receive_next_datagram_as_message(socket)
+    |> result.replace_error(SetActiveModeFailed),
+  )
+
+  Ok(SocketConfiguration(socket, broadcast_ip))
+}
+
+pub fn receive_next_datagram_as_message(
+  sockets: Sockets,
+) -> Result(Nil, toss.Error) {
+  use config <- for_each_socket(sockets)
+  toss.receive_next_datagram_as_message(config.socket)
+}
+
+pub fn close_sockets(sockets: Sockets) -> Nil {
+  use socket <- list.each(sockets.sockets)
+  toss.close(socket.socket)
+}
+
+/// Broadcasts the DNS-SD question for the given service type.
+pub fn broadcast_service_question(
+  sockets: Sockets,
+  service_type: String,
+) -> Result(Nil, toss.Error) {
+  let data = dns.encode_question(service_type)
+  use config <- for_each_socket(sockets)
+  toss.send_to(config.socket, config.broadcast_ip, mdns_port, data)
+}
+
+fn for_each_socket(
+  sockets: Sockets,
+  do: fn(SocketConfiguration) -> Result(Nil, e),
+) -> Result(Nil, e) {
+  sockets.sockets
+  |> list.map(do)
+  |> result.all()
+  |> result.replace(Nil)
 }
 
 /// Expects an IP to be valid, DON'T use for dynamic strings.

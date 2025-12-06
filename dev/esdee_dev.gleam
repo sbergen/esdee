@@ -1,4 +1,5 @@
 import esdee
+import esdee/discoverer.{type Discoverer}
 import gleam/erlang/process.{type Subject}
 import gleam/io
 import glip
@@ -9,28 +10,28 @@ type Discovered {
 }
 
 pub fn main() {
-  let assert Ok(discovery) =
+  let assert Ok(discoverer) =
     esdee.new()
     |> esdee.use_ipv6(True)
-    |> esdee.start()
-  let discovery = discovery.data
+    |> discoverer.start()
+  let discoverer = discoverer.data
 
   let types = process.new_subject()
   let details = process.new_subject()
 
-  esdee.subscribe_to_service_types(discovery, types)
-  let assert Ok(_) = esdee.poll_service_types(discovery)
+  discoverer.subscribe_to_service_types(discoverer, types)
+  let assert Ok(_) = discoverer.poll_service_types(discoverer)
 
   let selector =
     process.new_selector()
     |> process.select_map(types, ServiceType)
     |> process.select_map(details, ServiceDetails)
 
-  recieve_forever(discovery, selector, details)
+  recieve_forever(discoverer, selector, details)
 }
 
 fn recieve_forever(
-  discovery: esdee.ServiceDiscovery,
+  discoverer: Discoverer,
   selector: process.Selector(Discovered),
   details: Subject(esdee.ServiceDescription),
 ) -> Nil {
@@ -39,8 +40,9 @@ fn recieve_forever(
   case discovered {
     ServiceType(service_type) -> {
       io.println("Discovered service type: " <> service_type)
-      esdee.subscribe_to_service_details(discovery, service_type, details)
-      let assert Ok(_) = esdee.poll_service_details(discovery, service_type)
+      discoverer.subscribe_to_service_details(discoverer, service_type, details)
+      let assert Ok(_) =
+        discoverer.poll_service_details(discoverer, service_type)
       Nil
     }
 
@@ -55,5 +57,5 @@ fn recieve_forever(
     }
   }
 
-  recieve_forever(discovery, selector, details)
+  recieve_forever(discoverer, selector, details)
 }
