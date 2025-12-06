@@ -14,12 +14,21 @@ pub opaque type Discoverer {
   Discoverer(subject: Subject(Msg))
 }
 
-/// Starts the service discovery actor.
+/// Starts a DNS-SD service discovery actor with the default timeout.
 pub fn start(
   options: Options,
 ) -> Result(actor.Started(Discoverer), actor.StartError) {
-  // TODO timeout
-  actor.new_with_initialiser(1000, fn(self) {
+  start_with_timeout(options, 1000)
+}
+
+/// Starts a DNS-SD service discovery actor with a custom timeout,
+/// which applies to setting up the UDP sockets 
+/// (should be very fast, as no incoming data is waited for).
+pub fn start_with_timeout(
+  options: Options,
+  timeout_milliseconds: Int,
+) -> Result(actor.Started(Discoverer), actor.StartError) {
+  actor.new_with_initialiser(timeout_milliseconds, fn(self) {
     use sockets <- result.try(
       esdee.set_up_sockets(options)
       |> result.map_error(esdee.describe_setup_error),
@@ -88,13 +97,14 @@ pub fn poll_service_details(
 }
 
 // TODO: Unsubscribe functions
+
 /// The actor state
 type State {
   State(options: Options, sockets: Sockets, dispatcher: dispatcher.Dispatcher)
 }
 
+/// The actor messages
 type Msg {
-  /// The actor messages
   Stop
   SubscribeToServiceTypes(subject: Subject(String))
   SubscribeToServiceDetails(

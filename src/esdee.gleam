@@ -43,22 +43,24 @@ pub type ServiceDescription {
   )
 }
 
-// TODO: Expose some of the existing options, 
 /// For future options, e.g. IPv6
 pub opaque type Options {
-  Options(
-    start_timeout: Int,
-    max_data_size: Int,
-    address_families: Set(AddressFamily),
-  )
+  Options(max_data_size: Int, address_families: Set(AddressFamily))
 }
 
-/// Start configuring a service discovery actor,
-/// which can be started with `start`.
-/// Works with IPv4 only by default.
+/// Create default options for DNS-SD discovery.
+/// Can be used either with a full-fledged actor implementation
+/// which can be found in the `discoverer` module,
+/// or used with the `set_up_sockets` function.
 pub fn new() -> Options {
   let address_families = set.new() |> set.insert(Ipv4)
-  Options(start_timeout: 2000, max_data_size: 4096, address_families:)
+  Options(max_data_size: 8192, address_families:)
+}
+
+/// Configures the maximum data size when receiving UDP datagrams.
+/// Affects UDP performance, 8 KiB by default.
+pub fn with_max_data_size(options: Options, max_data_size: Int) {
+  Options(..options, max_data_size:)
 }
 
 /// Sets whether IPv4 will be used. True by default.
