@@ -7,14 +7,15 @@ import gleam/option.{None, Some}
 import gleam/otp/actor
 import gleam/result
 import gleam/set.{type Set}
-import glip.{type IpAddress}
+import glip.{type AddressFamily, type IpAddress, Ipv4, Ipv6}
 import toss
 
-const mds_port = 5353
+const mdns_port = 5353
 
 const all_services_type = "_services._dns-sd._udp.local"
 
 /// Describes a service fully discovered via DNS-SD.
+/// Note that the same service might be discovered through both IPv4 and IPv6.
 pub type ServiceDescription {
   ServiceDescription(
     /// The service type string, e.g. _googlecast._tcp.local
@@ -43,9 +44,13 @@ pub type ServiceDescription {
 
 /// For future options, e.g. IPv6
 // TODO: Expose some of the existing options, 
-// TODO see if the IP Is useful for testing, or if I should use a different port instead
+
 pub opaque type Options {
-  Options(start_timeout: Int, max_data_size: Int, broadcast_ip: IpAddress)
+  Options(
+    start_timeout: Int,
+    max_data_size: Int,
+    address_families: Set(AddressFamily),
+  )
 }
 
 /// A handle to a service discovery actor.
@@ -55,9 +60,35 @@ pub opaque type ServiceDiscovery {
 
 /// Start configuring a service discovery actor,
 /// which can be started with `start`.
+/// Works with IPv4 only by default.
 pub fn new() -> Options {
-  let broadcast_ip = constant_ip("224.0.0.251")
-  Options(start_timeout: 2000, max_data_size: 4096, broadcast_ip:)
+  let address_families = set.new() |> set.insert(Ipv4)
+  Options(start_timeout: 2000, max_data_size: 4096, address_families:)
+}
+
+/// Sets whether IPv4 will be used. True by default.
+pub fn use_ipv4(options: Options, enabled: Bool) -> Options {
+  set_address_family(options, Ipv4, enabled)
+}
+
+/// Sets whether IPv6 will be used. False by default.
+pub fn use_ipv6(options: Options, enabled: Bool) -> Options {
+  set_address_family(options, Ipv6, enabled)
+}
+
+fn set_address_family(
+  options: Options,
+  family: AddressFamily,
+  enabled: Bool,
+) -> Options {
+  let address_families =
+    options.address_families
+    |> case enabled {
+      False -> set.delete(_, family)
+      True -> set.insert(_, family)
+    }
+
+  Options(..options, address_families:)
 }
 
 /// Stops the service discovery actor.
@@ -76,7 +107,10 @@ pub fn subscribe_to_service_types(
 }
 
 /// Sends a DNS-SD question querying all the available service types in the local network.
-pub fn poll_service_types(discovery: ServiceDiscovery) -> Result(Nil, Nil) {
+/// If there are errors with the socket(s), returns the first error.
+pub fn poll_service_types(
+  discovery: ServiceDiscovery,
+) -> Result(Nil, toss.Error) {
   // TODO: configurable timeout?
   process.call(discovery.subject, 1000, PollServiceTypes)
 }
@@ -95,10 +129,11 @@ pub fn subscribe_to_service_details(
 }
 
 /// Sends a DNS-SD question querying the given service type in the local network.
+/// If there are errors with the socket(s), returns the first error.
 pub fn poll_service_details(
   discovery: ServiceDiscovery,
   service_type: String,
-) -> Result(Nil, Nil) {
+) -> Result(Nil, toss.Error) {
   // TODO: timeout?
   process.call(discovery.subject, 1000, PollServiceDetails(service_type, _))
 }
@@ -113,17 +148,25 @@ type Msg {
     service_type: String,
     subject: Subject(ServiceDescription),
   )
-  PollServiceTypes(reply_to: Subject(Result(Nil, Nil)))
-  PollServiceDetails(service_type: String, reply_to: Subject(Result(Nil, Nil)))
-  UpdDatagram(data: BitArray)
+  PollServiceTypes(reply_to: Subject(Result(Nil, toss.Error)))
+  PollServiceDetails(
+    service_type: String,
+    reply_to: Subject(Result(Nil, toss.Error)),
+  )
+  UpdDatagram(socket: toss.Socket, data: BitArray)
   UdpError(error: String)
+}
+
+/// Socket configuration, for IPv4 or IPv6
+type SocketConfiguration {
+  SocketConfiguration(socket: toss.Socket, broadcast_ip: IpAddress)
 }
 
 /// The actor state
 type State {
   State(
     options: Options,
-    socket: toss.Socket,
+    sockets: List(SocketConfiguration),
     service_type_subjects: Set(Subject(String)),
     service_detail_subjects: Dict(String, Set(Subject(ServiceDescription))),
   )
@@ -134,19 +177,16 @@ pub fn start(
   options: Options,
 ) -> Result(actor.Started(ServiceDiscovery), actor.StartError) {
   actor.new_with_initialiser(options.start_timeout, fn(self) {
-    use socket <- result.try(
-      toss.new(mds_port)
-      |> toss.use_ipv4()
-      |> toss.reuse_address()
-      |> toss.using_interface(options.broadcast_ip)
-      |> toss.open
-      |> result.replace_error("Could not open socket"),
-    )
+    use _ <- result.try(case set.is_empty(options.address_families) {
+      False -> Ok(Nil)
+      True -> Error("No IP address family selected")
+    })
 
-    let local_addr = constant_ip("0.0.0.0")
-    use _ <- result.try(
-      toss.join_multicast_group(socket, options.broadcast_ip, local_addr)
-      |> result.replace_error("Could not join multicast group"),
+    use sockets <- result.try(
+      options.address_families
+      |> set.to_list()
+      |> list.map(open_socket)
+      |> result.all(),
     )
 
     let selctor =
@@ -154,24 +194,63 @@ pub fn start(
       |> process.select(self)
       |> toss.select_udp_messages(fn(udp_msg) {
         case udp_msg {
-          toss.Datagram(data:, ..) -> UpdDatagram(data)
+          toss.Datagram(socket:, data:, ..) -> UpdDatagram(socket, data)
           toss.UdpError(_, e) -> UdpError(toss.describe_error(e))
         }
       })
 
-    use _ <- result.try(
-      toss.receive_next_datagram_as_message(socket)
-      |> result.replace_error("UDP message delivery failed"),
-    )
-
     Ok(
-      actor.initialised(State(options, socket, set.new(), dict.new()))
+      actor.initialised(State(options, sockets, set.new(), dict.new()))
       |> actor.selecting(selctor)
       |> actor.returning(ServiceDiscovery(self)),
     )
   })
   |> actor.on_message(handle_message)
   |> actor.start()
+}
+
+fn open_socket(family: AddressFamily) -> Result(SocketConfiguration, String) {
+  use #(socket, broadcast_ip) <- result.try(case family {
+    Ipv4 -> {
+      let broadcast_ip = constant_ip("224.0.0.251")
+      use socket <- result.try(
+        toss.new(mdns_port)
+        |> toss.use_ipv4()
+        |> toss.reuse_address()
+        |> toss.using_interface(broadcast_ip)
+        |> toss.open
+        |> result.replace_error("Could not open IPv4 socket"),
+      )
+
+      let local_addr = constant_ip("0.0.0.0")
+      use _ <- result.try(
+        toss.join_multicast_group(socket, broadcast_ip, local_addr)
+        |> result.replace_error("Could not join multicast group"),
+      )
+
+      Ok(#(socket, broadcast_ip))
+    }
+
+    Ipv6 -> {
+      let broadcast_ip = constant_ip("ff02::fb")
+      use socket <- result.try(
+        toss.new(mdns_port)
+        |> toss.use_ipv6()
+        |> toss.reuse_address()
+        |> toss.open
+        |> result.replace_error("Could not open IPv6 socket"),
+      )
+
+      Ok(#(socket, broadcast_ip))
+    }
+  })
+
+  use _ <- result.try(
+    toss.receive_next_datagram_as_message(socket)
+    |> result.replace_error("Could not configure socket for messages"),
+  )
+
+  Ok(SocketConfiguration(socket, broadcast_ip))
 }
 
 fn handle_message(state: State, msg: Msg) -> actor.Next(State, Msg) {
@@ -200,8 +279,8 @@ fn handle_message(state: State, msg: Msg) -> actor.Next(State, Msg) {
       actor.continue(State(..state, service_detail_subjects:))
     }
 
-    UpdDatagram(data:) -> {
-      case toss.receive_next_datagram_as_message(state.socket) {
+    UpdDatagram(socket:, data:) -> {
+      case toss.receive_next_datagram_as_message(socket) {
         // This shouldn't really happen, unless something is really wrong AFAIK.
         Error(_) -> actor.stop_abnormal("UDP message delivery failed")
 
@@ -219,7 +298,7 @@ fn handle_message(state: State, msg: Msg) -> actor.Next(State, Msg) {
     UdpError(error:) -> actor.stop_abnormal("UDP socket failed: " <> error)
 
     Stop -> {
-      toss.close(state.socket)
+      list.each(state.sockets, fn(config) { toss.close(config.socket) })
       actor.stop()
     }
   }
@@ -228,12 +307,16 @@ fn handle_message(state: State, msg: Msg) -> actor.Next(State, Msg) {
 fn poll(
   state: State,
   service: String,
-  respond_to: Subject(Result(Nil, Nil)),
+  respond_to: Subject(Result(Nil, toss.Error)),
 ) -> actor.Next(State, Msg) {
   let data = dns.encode_question(service)
   let result =
-    toss.send_to(state.socket, state.options.broadcast_ip, mds_port, data)
-    |> result.replace_error(Nil)
+    state.sockets
+    |> list.map(fn(config) {
+      toss.send_to(config.socket, config.broadcast_ip, mdns_port, data)
+    })
+    |> result.all()
+    |> result.replace(Nil)
 
   process.send(respond_to, result)
   actor.continue(state)

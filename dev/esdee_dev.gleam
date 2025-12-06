@@ -11,6 +11,7 @@ type Discovered {
 pub fn main() {
   let assert Ok(discovery) =
     esdee.new()
+    |> esdee.use_ipv6(True)
     |> esdee.start()
   let discovery = discovery.data
 
