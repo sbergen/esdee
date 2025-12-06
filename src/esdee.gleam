@@ -10,8 +10,6 @@ import gleam/set.{type Set}
 import glip.{type AddressFamily, type IpAddress, Ipv4, Ipv6}
 import toss
 
-const mdns_port = 5353
-
 /// The meta-service type for polling for all services
 pub const all_services_type = "_services._dns-sd._udp.local"
 
@@ -45,7 +43,7 @@ pub type ServiceDescription {
 
 /// For future options, e.g. IPv6
 pub opaque type Options {
-  Options(max_data_size: Int, address_families: Set(AddressFamily))
+  Options(max_data_size: Int, address_families: Set(AddressFamily), port: Int)
 }
 
 /// Create default options for DNS-SD discovery.
@@ -54,7 +52,13 @@ pub opaque type Options {
 /// or used with the `set_up_sockets` function.
 pub fn new() -> Options {
   let address_families = set.new() |> set.insert(Ipv4)
-  Options(max_data_size: 8192, address_families:)
+  Options(max_data_size: 8192, address_families:, port: 5353)
+}
+
+/// Sets a non-standard port, intended for testing
+@internal
+pub fn using_port(options: Options, port: Int) -> Options {
+  Options(..options, port:)
 }
 
 /// Configures the maximum data size when receiving UDP datagrams.
@@ -219,7 +223,7 @@ type SocketConfiguration {
 
 /// The collection of sockets used for service discovery (one for each address family used)
 pub opaque type Sockets {
-  Sockets(sockets: List(SocketConfiguration))
+  Sockets(sockets: List(SocketConfiguration), port: Int)
 }
 
 /// An error that can happen while setting up the UDP sockets.
@@ -260,21 +264,22 @@ pub fn set_up_sockets(options: Options) -> Result(Sockets, SocketSetupError) {
   use sockets <- result.try(
     options.address_families
     |> set.to_list()
-    |> list.map(open_socket)
+    |> list.map(open_socket(_, options.port))
     |> result.all(),
   )
 
-  Ok(Sockets(sockets))
+  Ok(Sockets(sockets, options.port))
 }
 
 fn open_socket(
   family: AddressFamily,
+  port: Int,
 ) -> Result(SocketConfiguration, SocketSetupError) {
   use #(socket, broadcast_ip) <- result.try(case family {
     Ipv4 -> {
       let broadcast_ip = constant_ip("224.0.0.251")
       use socket <- result.try(
-        toss.new(mdns_port)
+        toss.new(port)
         |> toss.use_ipv4()
         |> toss.reuse_address()
         |> toss.using_interface(broadcast_ip)
@@ -294,7 +299,7 @@ fn open_socket(
     Ipv6 -> {
       let broadcast_ip = constant_ip("ff02::fb")
       use socket <- result.try(
-        toss.new(mdns_port)
+        toss.new(port)
         |> toss.use_ipv6()
         |> toss.reuse_address()
         |> toss.open
@@ -332,7 +337,7 @@ pub fn broadcast_service_question(
 ) -> Result(Nil, toss.Error) {
   let data = dns.encode_question(service_type)
   use config <- for_each_socket(sockets)
-  toss.send_to(config.socket, config.broadcast_ip, mdns_port, data)
+  toss.send_to(config.socket, config.broadcast_ip, sockets.port, data)
 }
 
 fn for_each_socket(
