@@ -323,6 +323,10 @@ fn open_socket(
         |> result.replace_error(FailedToOpenSocket(family)),
       )
 
+      // Whether this is necessary is platform-dependent
+      let local_addr = constant_ip("::")
+      let _ = toss.join_multicast_group(socket, broadcast_ip, local_addr)
+
       Ok(#(socket, broadcast_ip))
     }
   })
