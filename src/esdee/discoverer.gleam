@@ -73,7 +73,14 @@ pub fn subscribe_to_service_types(
   discoverer: Discoverer,
   subject: Subject(String),
 ) -> Nil {
-  process.send(discoverer.subject, SubscribeToServiceTypes(subject))
+  process.send(discoverer.subject, SubscribeToServiceTypes(subject, True))
+}
+
+pub fn unsubscribe_from_service_types(
+  discoverer: Discoverer,
+  subject: Subject(String),
+) -> Nil {
+  process.send(discoverer.subject, SubscribeToServiceTypes(subject, False))
 }
 
 /// Sends a DNS-SD question querying all the available service types in the local network.
@@ -92,7 +99,18 @@ pub fn subscribe_to_service_details(
 ) -> Nil {
   process.send(
     discoverer.subject,
-    SubscribeToServiceDetails(service_type, subject),
+    SubscribeToServiceDetails(service_type, subject, True),
+  )
+}
+
+pub fn unsubscribe_from_service_details(
+  discoverer: Discoverer,
+  service_type: String,
+  subject: Subject(ServiceDescription),
+) -> Nil {
+  process.send(
+    discoverer.subject,
+    SubscribeToServiceDetails(service_type, subject, False),
   )
 }
 
@@ -106,8 +124,6 @@ pub fn poll_service_details(
   process.call(discoverer.subject, 1000, PollServiceDetails(service_type, _))
 }
 
-// TODO: Unsubscribe functions
-
 /// The actor state
 type State {
   State(options: Options, sockets: Sockets, dispatcher: dispatcher.Dispatcher)
@@ -116,10 +132,11 @@ type State {
 /// The actor messages
 type Msg {
   Stop
-  SubscribeToServiceTypes(subject: Subject(String))
+  SubscribeToServiceTypes(subject: Subject(String), subscribe: Bool)
   SubscribeToServiceDetails(
     service_type: String,
     subject: Subject(ServiceDescription),
+    subscribe: Bool,
   )
   PollServiceTypes(reply_to: Subject(Result(Nil, toss.Error)))
   PollServiceDetails(
@@ -137,19 +154,32 @@ fn handle_message(state: State, msg: Msg) -> actor.Next(State, Msg) {
     PollServiceTypes(reply_to:) ->
       poll(state, esdee.all_services_type, reply_to)
 
-    SubscribeToServiceTypes(subject:) -> {
-      let dispatcher =
-        dispatcher.subscribe_to_service_types(state.dispatcher, subject)
+    SubscribeToServiceTypes(subject:, subscribe:) -> {
+      let dispatcher = case subscribe {
+        True -> dispatcher.subscribe_to_service_types(state.dispatcher, subject)
+        False ->
+          dispatcher.unsubscribe_from_service_types(state.dispatcher, subject)
+      }
+
       actor.continue(State(..state, dispatcher:))
     }
 
-    SubscribeToServiceDetails(service_type:, subject:) -> {
-      let dispatcher =
-        dispatcher.subscribe_to_service_details(
-          state.dispatcher,
-          service_type,
-          subject,
-        )
+    SubscribeToServiceDetails(service_type:, subject:, subscribe:) -> {
+      let dispatcher = case subscribe {
+        True ->
+          dispatcher.subscribe_to_service_details(
+            state.dispatcher,
+            service_type,
+            subject,
+          )
+
+        False ->
+          dispatcher.unsubscribe_from_service_details(
+            state.dispatcher,
+            service_type,
+            subject,
+          )
+      }
       actor.continue(State(..state, dispatcher:))
     }
 

@@ -55,6 +55,28 @@ fn discover_and_stop(family: AddressFamily) {
   let assert Ok(_) = process.receive(services, 10)
 }
 
+pub fn unsubscribe_test() {
+  let #(sd, device) = new(Ipv4)
+
+  // Subscribe and unsubscribe
+  let types = process.new_subject()
+  let services = process.new_subject()
+
+  discoverer.subscribe_to_service_types(sd, types)
+  discoverer.subscribe_to_service_details(sd, googlecast_type, services)
+
+  discoverer.unsubscribe_from_service_types(sd, types)
+  discoverer.unsubscribe_from_service_details(sd, googlecast_type, services)
+
+  // Send datagrams
+  device_send(device, datagrams.googlecast_type_answer_bits)
+  device_send(device, datagrams.ipv4_service_answer_bits)
+
+  // Check that nothing is received after unsubscribe
+  assert process.receive(types, 10) == Error(Nil)
+  assert process.receive(services, 10) == Error(Nil)
+}
+
 type FakeDevice {
   FakeDevice(socket: Socket, broadcast_ip: IpAddress)
 }
