@@ -8,6 +8,8 @@ import toss.{type Socket}
 
 const test_port = 12_345
 
+const googlecast_type = "_googlecast._tcp.local"
+
 fn new(family: AddressFamily) -> #(Discoverer, FakeDevice) {
   let assert Ok(sd) =
     esdee.new()
@@ -28,31 +30,44 @@ pub fn discover_and_stop_ipv6_test() {
   discover_and_stop(Ipv6)
 }
 
-fn discover_and_stop(family: AddressFamily) -> Nil {
+fn discover_and_stop(family: AddressFamily) {
   let #(sd, device) = new(family)
 
+  // Check that discovery packet is sent
   assert discoverer.poll_service_types(sd) == Ok(Nil)
-  assert expect_receive(device) == Ok(datagrams.service_type_discovery_bits)
+  assert expect_device_receive(device)
+    == Ok(datagrams.service_type_discovery_bits)
 
-  discoverer.stop(sd)
+  // Check that details packet is sent
+  assert discoverer.poll_service_details(sd, googlecast_type) == Ok(Nil)
+  assert expect_device_receive(device) == Ok(datagrams.googlecast_query_bits)
+
+  // Check that service types are discovered
+  let types = process.new_subject()
+  discoverer.subscribe_to_service_types(sd, types)
+  device_send(device, datagrams.googlecast_type_answer_bits)
+  assert process.receive(types, 10) == Ok(googlecast_type)
+
+  // Check that services are discovered
+  let services = process.new_subject()
+  discoverer.subscribe_to_service_details(sd, googlecast_type, services)
+  device_send(device, datagrams.ipv4_service_answer_bits)
+  let assert Ok(_) = process.receive(services, 10)
 }
 
 type FakeDevice {
   FakeDevice(socket: Socket, broadcast_ip: IpAddress)
 }
 
-fn expect_receive(device: FakeDevice) -> Result(BitArray, Nil) {
-  let result_subject = process.new_subject()
-  process.spawn(fn() {
-    let result =
-      toss.receive(device.socket, 4096, 10)
-      |> result.map(fn(tuple) { tuple.2 })
-      |> result.replace_error(Nil)
-    process.send(result_subject, result)
-  })
+fn expect_device_receive(device: FakeDevice) -> Result(BitArray, toss.Error) {
+  toss.receive(device.socket, 4096, 10)
+  |> result.map(fn(tuple) { tuple.2 })
+}
 
-  process.receive(result_subject, 10)
-  |> result.flatten()
+fn device_send(device: FakeDevice, data: BitArray) {
+  assert toss.send_to(device.socket, device.broadcast_ip, test_port, data)
+    == Ok(Nil)
+    as "Device send failed"
 }
 
 fn start_fake_device(family: AddressFamily) -> FakeDevice {
