@@ -12,7 +12,7 @@ packages = [
   { name = "glip", version = "1.0.0", build_tools = ["gleam"], requirements = ["gleam_stdlib"], otp_app = "glip", source = "hex", outer_checksum = "FC12ACF260ED6B900CE0A14BAEB9912498B483D9467189F518BE06C7E02D91DE" },
   { name = "simplifile", version = "2.3.1", build_tools = ["gleam"], requirements = ["filepath", "gleam_stdlib"], otp_app = "simplifile", source = "hex", outer_checksum = "957E0E5B75927659F1D2A1B7B75D7B9BA96FAA8D0C53EA71C4AD9CD0C6B848F6" },
   { name = "splitter", version = "1.2.0", build_tools = ["gleam"], requirements = ["gleam_stdlib"], otp_app = "splitter", source = "hex", outer_checksum = "3DFD6B6C49E61EDAF6F7B27A42054A17CFF6CA2135FF553D0CB61C234D281DD0" },
-  { name = "toss", version = "1.0.0-rc4", build_tools = ["gleam"], requirements = ["gleam_erlang", "gleam_stdlib", "glip"], otp_app = "toss", source = "hex", outer_checksum = "B30575F334677A0B697E06716934A92BEF0D0B7F427FB263B680DB8FDAB46B2F" },
+  { name = "toss", version = "1.0.0", build_tools = ["gleam"], requirements = ["gleam_erlang", "gleam_stdlib", "glip"], otp_app = "toss", source = "hex", outer_checksum = "6306FC1C445458C3F5C865173959553336C64B0620376B9FA35CB91E7426747D" },
 ]
 
 [requirements]
@@ -24,4 +24,4 @@ gleam_stdlib = { version = ">= 0.44.0 and < 2.0.0" }
 gleeunit = { version = ">= 1.0.0 and < 2.0.0" }
 glip = { version = ">= 1.0.0 and < 2.0.0" }
 simplifile = { version = ">= 2.3.1 and < 3.0.0" }
-toss = { version = "1.0.0-rc4" }
+toss = { version = ">= 1.0.0 and < 2.0.0" }
