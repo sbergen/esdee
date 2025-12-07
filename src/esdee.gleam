@@ -67,6 +67,14 @@ pub fn with_max_data_size(options: Options, max_data_size: Int) {
   Options(..options, max_data_size:)
 }
 
+/// Sets the used address families explicitly
+pub fn use_address_families(
+  options: Options,
+  families: List(AddressFamily),
+) -> Options {
+  Options(..options, address_families: set.from_list(families))
+}
+
 /// Sets whether IPv4 will be used. True by default.
 pub fn use_ipv4(options: Options, enabled: Bool) -> Options {
   set_address_family(options, Ipv4, enabled)
