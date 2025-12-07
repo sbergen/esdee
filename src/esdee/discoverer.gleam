@@ -6,6 +6,7 @@ import esdee.{
 import esdee/dispatcher
 import gleam/erlang/process.{type Subject}
 import gleam/otp/actor
+import gleam/otp/supervision
 import gleam/result
 import toss
 
@@ -19,6 +20,15 @@ pub fn start(
   options: Options,
 ) -> Result(actor.Started(Discoverer), actor.StartError) {
   start_with_timeout(options, 1000)
+}
+
+pub fn supervised(
+  options: Options,
+  start_timeout_milliseconds: Int,
+) -> supervision.ChildSpecification(Discoverer) {
+  supervision.worker(fn() {
+    start_with_timeout(options, start_timeout_milliseconds)
+  })
 }
 
 /// Starts a DNS-SD service discovery actor with a custom timeout,
