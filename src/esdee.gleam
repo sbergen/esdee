@@ -45,12 +45,7 @@ pub type ServiceDescription {
 
 /// Holds the options for DNS-SD discovery.
 pub opaque type Options {
-  Options(
-    max_data_size: Int,
-    address_families: Set(AddressFamily),
-    port: Int,
-    discoverer_timeout: Int,
-  )
+  Options(max_data_size: Int, address_families: Set(AddressFamily), port: Int)
 }
 
 /// Create default options for DNS-SD discovery.
@@ -59,33 +54,13 @@ pub opaque type Options {
 /// or used with the `set_up_sockets` function.
 pub fn new() -> Options {
   let address_families = set.new() |> set.insert(Ipv4)
-  Options(
-    max_data_size: 8192,
-    address_families:,
-    port: 5353,
-    discoverer_timeout: 1000,
-  )
+  Options(max_data_size: 8192, address_families:, port: 5353)
 }
 
 /// Sets a non-standard port, intended for testing
 @internal
 pub fn using_port(options: Options, port: Int) -> Options {
   Options(..options, port:)
-}
-
-// TODO: Move out from this module after all!
-
-/// Sets a timeout for the actor to respond
-/// when broadcasting discovery messages using `discoverer`.
-/// All operations should be fast, as they don't wait for responses from the network.
-/// Default is one second.
-pub fn with_discoverer_timeout(options: Options, discoverer_timeout: Int) {
-  Options(..options, discoverer_timeout:)
-}
-
-@internal
-pub fn discoverer_timeout(options: Options) {
-  options.discoverer_timeout
 }
 
 /// Configures the maximum data size when receiving UDP datagrams.

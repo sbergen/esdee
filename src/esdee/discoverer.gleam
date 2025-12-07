@@ -1,4 +1,4 @@
-//// Provides an actor-based DNS-SD discovery mechanism
+//// Provides an actor-based DNS-SD discovery mechanism.
 
 import esdee.{
   type Options, type ServiceDescription, type Sockets, type UdpMessage,
@@ -12,37 +12,41 @@ import toss
 
 /// A handle to a service discovery actor.
 pub opaque type Discoverer {
-  Discoverer(subject: Subject(Msg), options: Options)
+  Discoverer(subject: Subject(Msg), poll_timeout: Int)
 }
 
-fn poll_timeout(discoverer: Discoverer) -> Int {
-  esdee.discoverer_timeout(discoverer.options)
-}
-
-/// Starts a DNS-SD service discovery actor with the default timeout.
+/// Starts a DNS-SD service discovery actor with the default timeouts.
 pub fn start(
   options: Options,
 ) -> Result(actor.Started(Discoverer), actor.StartError) {
-  start_with_timeout(options, 1000)
+  start_with_timeouts(options, 1000, 1000)
 }
 
+/// Returns a child specification for running the actor with supervision.
 pub fn supervised(
   options: Options,
   start_timeout_milliseconds: Int,
+  poll_timeout_milliseconds: Int,
 ) -> supervision.ChildSpecification(Discoverer) {
   supervision.worker(fn() {
-    start_with_timeout(options, start_timeout_milliseconds)
+    start_with_timeouts(
+      options,
+      start_timeout_milliseconds,
+      poll_timeout_milliseconds,
+    )
   })
 }
 
-/// Starts a DNS-SD service discovery actor with a custom timeout,
-/// which applies to setting up the UDP sockets 
-/// (should be very fast, as no incoming data is waited for).
-pub fn start_with_timeout(
+/// Starts a DNS-SD service discovery actor with custom timeouts.
+/// The timeouts apply to the actor startup, 
+/// and it responding to poll requests respectively.
+/// Both should be very fast, as no incoming data is waited for.
+pub fn start_with_timeouts(
   options: Options,
-  timeout_milliseconds: Int,
+  start_timeout_milliseconds: Int,
+  poll_timeout_milliseconds: Int,
 ) -> Result(actor.Started(Discoverer), actor.StartError) {
-  actor.new_with_initialiser(timeout_milliseconds, fn(self) {
+  actor.new_with_initialiser(start_timeout_milliseconds, fn(self) {
     use sockets <- result.try(
       esdee.set_up_sockets(options)
       |> result.map_error(esdee.describe_setup_error),
@@ -58,7 +62,7 @@ pub fn start_with_timeout(
     Ok(
       actor.initialised(State(options, sockets, dispatcher.new()))
       |> actor.selecting(selctor)
-      |> actor.returning(Discoverer(self, options)),
+      |> actor.returning(Discoverer(self, poll_timeout_milliseconds)),
     )
   })
   |> actor.on_message(handle_message)
@@ -80,6 +84,7 @@ pub fn subscribe_to_service_types(
   process.send(discoverer.subject, SubscribeToServiceTypes(subject, True))
 }
 
+/// Unsubscribes the given subject from discovered service types.
 pub fn unsubscribe_from_service_types(
   discoverer: Discoverer,
   subject: Subject(String),
@@ -90,7 +95,7 @@ pub fn unsubscribe_from_service_types(
 /// Sends a DNS-SD question querying all the available service types in the local network.
 /// If there are errors with the socket(s), returns the first error.
 pub fn poll_service_types(discoverer: Discoverer) -> Result(Nil, toss.Error) {
-  process.call(discoverer.subject, poll_timeout(discoverer), PollServiceTypes)
+  process.call(discoverer.subject, discoverer.poll_timeout, PollServiceTypes)
 }
 
 /// Subscribes the given subject to all discovered service details.
@@ -106,6 +111,7 @@ pub fn subscribe_to_service_details(
   )
 }
 
+/// Unsubscribes the given subject from receiving details for the given service type.
 pub fn unsubscribe_from_service_details(
   discoverer: Discoverer,
   service_type: String,
@@ -123,7 +129,7 @@ pub fn poll_service_details(
   discoverer: Discoverer,
   service_type: String,
 ) -> Result(Nil, toss.Error) {
-  process.call(discoverer.subject, poll_timeout(discoverer), PollServiceDetails(
+  process.call(discoverer.subject, discoverer.poll_timeout, PollServiceDetails(
     service_type,
     _,
   ))

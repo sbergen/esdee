@@ -21,6 +21,9 @@ pub fn new() -> Dispatcher {
   Dispatcher(set.new(), dict.new())
 }
 
+/// Subscribes the given subject to discovered service types.
+/// Calling this multiple times with the same subject
+/// does not produce multiple subscriptions.
 pub fn subscribe_to_service_types(
   dispatcher: Dispatcher,
   subject: Subject(String),
@@ -31,6 +34,7 @@ pub fn subscribe_to_service_types(
   Dispatcher(..dispatcher, service_type_subjects:)
 }
 
+/// Unsubscribes the given subject from discovered service types.
 pub fn unsubscribe_from_service_types(
   dispatcher: Dispatcher,
   subject: Subject(String),
@@ -41,6 +45,9 @@ pub fn unsubscribe_from_service_types(
   Dispatcher(..dispatcher, service_type_subjects:)
 }
 
+/// Subscribes the given subject to discovered service details of the given type.
+/// Calling this multiple times with the same subject
+/// does not produce multiple subscriptions.
 pub fn subscribe_to_service_details(
   dispatcher: Dispatcher,
   service_type: String,
@@ -58,6 +65,7 @@ pub fn subscribe_to_service_details(
   Dispatcher(..dispatcher, service_detail_subjects:)
 }
 
+/// Unsubscribes the given subject from receiving details for the given service type.
 pub fn unsubscribe_from_service_details(
   dispatcher: Dispatcher,
   service_type: String,
@@ -78,6 +86,7 @@ pub fn unsubscribe_from_service_details(
   Dispatcher(..dispatcher, service_detail_subjects:)
 }
 
+/// Dispatches the service discovery update to all relevant subscribers.
 pub fn dispatch(dispatcher: Dispatcher, update: ServiceDiscveryUpdate) -> Nil {
   case update {
     ServiceTypeDiscovered(service_type) ->
