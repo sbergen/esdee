@@ -6,8 +6,7 @@ import esdee/dispatcher
 import gleam/erlang/process
 import glip
 
-// This can be slow on GitHub
-const receive_timeout = 100
+const receive_timeout = 10
 
 pub fn dispatch_empty_test() {
   // Smoke test that nothing happens with an empty dispatcher

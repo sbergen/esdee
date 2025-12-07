@@ -8,6 +8,9 @@ import toss.{type Socket}
 
 const test_port = 12_345
 
+// This can be slow on GitHub?
+const receive_timeout = 1000
+
 const googlecast_type = "_googlecast._tcp.local"
 
 fn new(family: AddressFamily) -> #(Discoverer, FakeDevice) {
@@ -46,13 +49,13 @@ fn discover_and_stop(family: AddressFamily) {
   let types = process.new_subject()
   discoverer.subscribe_to_service_types(sd, types)
   device_send(device, datagrams.googlecast_type_answer_bits)
-  assert process.receive(types, 10) == Ok(googlecast_type)
+  assert process.receive(types, receive_timeout) == Ok(googlecast_type)
 
   // Check that services are discovered
   let services = process.new_subject()
   discoverer.subscribe_to_service_details(sd, googlecast_type, services)
   device_send(device, datagrams.ipv4_service_answer_bits)
-  let assert Ok(_) = process.receive(services, 10)
+  let assert Ok(_) = process.receive(services, receive_timeout)
 }
 
 pub fn unsubscribe_test() {
@@ -73,8 +76,8 @@ pub fn unsubscribe_test() {
   device_send(device, datagrams.ipv4_service_answer_bits)
 
   // Check that nothing is received after unsubscribe
-  assert process.receive(types, 10) == Error(Nil)
-  assert process.receive(services, 10) == Error(Nil)
+  assert process.receive(types, receive_timeout) == Error(Nil)
+  assert process.receive(services, receive_timeout) == Error(Nil)
 }
 
 type FakeDevice {
@@ -82,7 +85,7 @@ type FakeDevice {
 }
 
 fn expect_device_receive(device: FakeDevice) -> Result(BitArray, toss.Error) {
-  toss.receive(device.socket, 4096, 10)
+  toss.receive(device.socket, 4096, receive_timeout)
   |> result.map(fn(tuple) { tuple.2 })
 }
 
