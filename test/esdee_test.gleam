@@ -1,10 +1,19 @@
 import checkmark
 import envoy
+import gleam/result
 import gleeunit
 import simplifile
 
 pub fn main() -> Nil {
   gleeunit.main()
+}
+
+// All the functionality used by `discoverer`,
+// so we focus on testing that.
+
+/// Are we running on CI?
+pub fn on_ci() -> Bool {
+  result.is_ok(envoy.get("GITHUB_WORKFLOW"))
 }
 
 pub fn check_example_test() {
@@ -15,10 +24,6 @@ pub fn check_example_test() {
       tagged: "gleam",
     )
     // Update locally, check on CI
-    |> checkmark.check_or_update(
-      when: envoy.get("GITHUB_WORKFLOW") == Error(Nil),
-    )
+    |> checkmark.check_or_update(when: !on_ci())
     == Ok(Nil)
 }
-// All the functionality used by `discoverer`,
-// so we focus on testing that.
