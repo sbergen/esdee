@@ -1,5 +1,6 @@
-///// A utility for dispatching service types and descriptions
-///// and managing related subscriptions.
+//// Provides the base functionality for DNS-SD discovery
+//// and `Selector`-based functions to listen to discovery messages.
+//// For an actor-based discovery client, see `discoverer`.
 
 import esdee/internal/dns.{type ResourceRecord}
 import gleam/bool
@@ -11,6 +12,7 @@ import glip.{type AddressFamily, type IpAddress, Ipv4, Ipv6}
 import toss
 
 /// The meta-service type for polling for all services
+/// (_services._dns-sd._udp.local).
 pub const all_services_type = "_services._dns-sd._udp.local"
 
 /// Describes a service fully discovered via DNS-SD.
@@ -41,7 +43,7 @@ pub type ServiceDescription {
   )
 }
 
-/// For future options, e.g. IPv6
+/// Holds the options for DNS-SD discovery.
 pub opaque type Options {
   Options(
     max_data_size: Int,
@@ -70,6 +72,8 @@ pub fn new() -> Options {
 pub fn using_port(options: Options, port: Int) -> Options {
   Options(..options, port:)
 }
+
+// TODO: Move out from this module after all!
 
 /// Sets a timeout for the actor to respond
 /// when broadcasting discovery messages using `discoverer`.
@@ -123,13 +127,14 @@ fn set_address_family(
   Options(..options, address_families:)
 }
 
-/// The result of successfully parsing a UDP datagram into an DNS-SD update.
+/// The result of successfully parsing a UDP datagram into a DNS-SD update.
 pub type ServiceDiscveryUpdate {
   ServiceTypeDiscovered(String)
   ServiceDiscovered(ServiceDescription)
 }
 
-/// A pre-processed UDP message
+/// A UDP message, which has either been parsed into a DNS-SD update,
+/// or was not recognised and is passed along unmodified.
 pub type UdpMessage {
   /// A processed datagram that was DNS-SD related
   DnsSdMessage(ServiceDiscveryUpdate)
@@ -138,13 +143,13 @@ pub type UdpMessage {
 }
 
 /// Configure a selector to receive messages from UDP sockets,
-/// pre-processing them to filter separate DNS-SD messages from other messages.
+/// pre-processing them to separate DNS-SD messages from other messages.
 /// You will also need to call
 /// [`receive_next_datagram_as_message`](#receive_next_datagram_as_message)
 /// to use the selector successfully - once initially,
 /// and again after receiving each message.
 ///
-/// Note that this will receive messages from all UDP sockets that the process controls,
+/// Note that this will receive messages from all `gen_udp` sockets that the process controls,
 /// rather than any specific one.
 /// If you wish to only handle messages from one socket then use one process per socket.
 pub fn select_processed_udp_messages(
@@ -155,7 +160,7 @@ pub fn select_processed_udp_messages(
   mapper(classify_message(message))
 }
 
-/// Classifies an UDP message
+/// Classifies a UDP message to determine if it is related to DNS-SD.
 pub fn classify_message(message: toss.UdpMessage) -> UdpMessage {
   case message {
     toss.Datagram(data:, ..) as datagram ->
@@ -168,8 +173,13 @@ pub fn classify_message(message: toss.UdpMessage) -> UdpMessage {
   }
 }
 
-/// Parses the contents of an UDP datagram into a DNS-SD update,
-/// Returns an error, if the data was not a DNS-SD update or had incomplete data.
+/// Parses the contents of a UDP datagram into a DNS-SD update,
+/// or returns an error, if the data was not a DNS-SD update, or had incomplete data.
+/// If you don't want to use `toss` for IO, 
+/// this function can be used directly to parse DNS-SD data.
+/// (Note: if you have a use case for this, 
+/// and would prefer it to be in a separate package,
+/// please open an issue on GitHub!)
 pub fn parse_sd_update(data: BitArray) -> Result(ServiceDiscveryUpdate, Nil) {
   // If we get invalid data, we shouldn't care about it
   use records <- result.try(
@@ -269,6 +279,7 @@ pub type SocketSetupError {
   SetActiveModeFailed
 }
 
+/// Converts a setup error value to a description string.
 pub fn describe_setup_error(error: SocketSetupError) -> String {
   case error {
     FailedToJoinMulticastGroup -> "Failed to join (IPv4) multicast group"
@@ -285,7 +296,7 @@ pub fn describe_setup_error(error: SocketSetupError) -> String {
   }
 }
 
-/// Opens and sets ups the service discovery UDP socket(s).
+/// Opens and sets up the service discovery UDP socket(s).
 pub fn set_up_sockets(options: Options) -> Result(Sockets, SocketSetupError) {
   use _ <- result.try(case set.is_empty(options.address_families) {
     False -> Ok(Nil)
@@ -349,6 +360,8 @@ fn open_socket(
   Ok(SocketConfiguration(socket, broadcast_ip))
 }
 
+/// Sets the underlying sockets to receive the next datagram as a message.
+/// See `toss.receive_next_datagram_as_message` for details.
 pub fn receive_next_datagram_as_message(
   sockets: Sockets,
 ) -> Result(Nil, toss.Error) {
@@ -356,6 +369,7 @@ pub fn receive_next_datagram_as_message(
   toss.receive_next_datagram_as_message(config.socket)
 }
 
+/// Closes all the sockets in the socket collection.
 pub fn close_sockets(sockets: Sockets) -> Nil {
   use socket <- list.each(sockets.sockets)
   toss.close(socket.socket)

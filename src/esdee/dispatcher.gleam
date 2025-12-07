@@ -1,4 +1,5 @@
-//// Utility for dispatching service types and descriptions.
+//// A utility for dispatching service types and descriptions
+//// and managing related subscriptions.
 
 import esdee.{
   type ServiceDescription, type ServiceDiscveryUpdate, ServiceDiscovered,
