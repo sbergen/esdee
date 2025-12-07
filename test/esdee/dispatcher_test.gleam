@@ -6,6 +6,9 @@ import esdee/dispatcher
 import gleam/erlang/process
 import glip
 
+// This can be slow on GitHub
+const receive_timeout = 100
+
 pub fn dispatch_empty_test() {
   // Smoke test that nothing happens with an empty dispatcher
   dispatcher.new()
@@ -31,9 +34,9 @@ pub fn dispatch_basic_test() {
   dispatcher.dispatch(dispatcher, ServiceTypeDiscovered(service_type))
   dispatcher.dispatch(dispatcher, ServiceDiscovered(service))
 
-  assert process.receive(type_subject, 10) == Ok(service_type)
-  assert process.receive(details_subject, 10) == Ok(service)
-  assert process.receive(other_details_subject, 10) == Error(Nil)
+  assert process.receive(type_subject, receive_timeout) == Ok(service_type)
+  assert process.receive(details_subject, receive_timeout) == Ok(service)
+  assert process.receive(other_details_subject, receive_timeout) == Error(Nil)
 }
 
 pub fn subscribe_twice_test() {
@@ -52,12 +55,12 @@ pub fn subscribe_twice_test() {
   dispatcher.dispatch(dispatcher, ServiceTypeDiscovered(service_type))
   dispatcher.dispatch(dispatcher, ServiceDiscovered(service))
 
-  assert process.receive(type_subject, 10) == Ok(service_type)
-  assert process.receive(details_subject, 10) == Ok(service)
+  assert process.receive(type_subject, receive_timeout) == Ok(service_type)
+  assert process.receive(details_subject, receive_timeout) == Ok(service)
 
   // Should not be received twice
-  assert process.receive(type_subject, 10) == Error(Nil)
-  assert process.receive(details_subject, 10) == Error(Nil)
+  assert process.receive(type_subject, receive_timeout) == Error(Nil)
+  assert process.receive(details_subject, receive_timeout) == Error(Nil)
 }
 
 pub fn unsubscribe_types_test() {
@@ -73,7 +76,7 @@ pub fn unsubscribe_types_test() {
   let service_type = ServiceTypeDiscovered("my-service")
   dispatcher.dispatch(dispatcher, service_type)
 
-  assert process.receive(type_subject, 10) == Error(Nil)
+  assert process.receive(type_subject, receive_timeout) == Error(Nil)
 }
 
 pub fn unsubscribe_details_test() {
@@ -99,9 +102,9 @@ pub fn unsubscribe_details_test() {
       subject_1,
     )
   dispatcher.dispatch(dispatcher, ServiceDiscovered(my_service))
-  assert process.receive(subject_1, 10) == Error(Nil)
-  assert process.receive(subject_2, 10) == Ok(my_service)
-  assert process.receive(both_subject, 10) == Ok(my_service)
+  assert process.receive(subject_1, receive_timeout) == Error(Nil)
+  assert process.receive(subject_2, receive_timeout) == Ok(my_service)
+  assert process.receive(both_subject, receive_timeout) == Ok(my_service)
 
   // Unsubscribe from my-service, other-service should still work
   let dispatcher =
@@ -111,7 +114,7 @@ pub fn unsubscribe_details_test() {
       both_subject,
     )
   dispatcher.dispatch(dispatcher, ServiceDiscovered(other_service))
-  assert process.receive(both_subject, 10) == Ok(other_service)
+  assert process.receive(both_subject, receive_timeout) == Ok(other_service)
 
   // Unsubscribe last subscriber, nothing should be received
   let dispatcher =
@@ -126,7 +129,7 @@ pub fn unsubscribe_details_test() {
     |> process.select(subject_1)
     |> process.select(subject_2)
     |> process.select(both_subject)
-    |> process.selector_receive(10)
+    |> process.selector_receive(receive_timeout)
     == Error(Nil)
 }
 
