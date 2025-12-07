@@ -10,24 +10,30 @@ type Discovered {
 }
 
 pub fn main() {
-  let assert Ok(discoverer) =
+  // Create new discoverer that listens to both IPv4 and IPv6 DNS-SD messages
+  let assert Ok(sd) =
     esdee.new()
     |> esdee.use_ipv6(True)
     |> discoverer.start()
-  let discoverer = discoverer.data
+  let sd = sd.data
 
+  // Set up subjects for both service type and details discovery results
   let types = process.new_subject()
   let details = process.new_subject()
 
-  discoverer.subscribe_to_service_types(discoverer, types)
-  let assert Ok(_) = discoverer.poll_service_types(discoverer)
+  // Subscribe to available service types,
+  // and send a query for all available service types.
+  discoverer.subscribe_to_service_types(sd, types)
+  let assert Ok(_) = discoverer.poll_service_types(sd)
 
+  // Combine both types of updates into one selector for printing
   let selector =
     process.new_selector()
     |> process.select_map(types, ServiceType)
     |> process.select_map(details, ServiceDetails)
 
-  recieve_forever(discoverer, selector, details)
+  // Start handling updates
+  recieve_forever(sd, selector, details)
 }
 
 fn recieve_forever(
@@ -40,6 +46,12 @@ fn recieve_forever(
   case discovered {
     ServiceType(service_type) -> {
       io.println("Discovered service type: " <> service_type)
+
+      // When a service type is discovered,
+      // subscribe to the details of and send a query for that type.
+      // No duplicate subscriptions will be created,
+      // but duplicate detail queries might be sent,
+      // as we aren't doing any filtering on the types.
       discoverer.subscribe_to_service_details(discoverer, service_type, details)
       let assert Ok(_) =
         discoverer.poll_service_details(discoverer, service_type)
