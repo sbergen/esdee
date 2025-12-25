@@ -23,6 +23,7 @@ pub opaque type Builder {
     name: Option(process.Name(Msg)),
     start_timeout: Int,
     poll_timeout: Int,
+    on_start: Option(fn(Discoverer) -> Nil),
   )
 }
 
@@ -40,7 +41,7 @@ pub fn poll_timeout(builder: Builder, timeout: Int) -> Builder {
 
 /// Starts building a discoverer from the base options.
 pub fn build(options: Options) -> Builder {
-  Builder(options, None, 1000, 1000)
+  Builder(options, None, 1000, 1000, None)
 }
 
 pub fn named(
@@ -79,17 +80,28 @@ pub fn start(
     })
     |> actor.on_message(handle_message)
 
-  case builder.name {
-    Some(name) -> actor.named(actor_builder, name)
-    None -> actor_builder
+  let result =
+    case builder.name {
+      Some(name) -> actor.named(actor_builder, name)
+      None -> actor_builder
+    }
+    |> actor.start()
+
+  case result, builder.on_start {
+    Ok(started), Some(on_start) -> on_start(started.data)
+    _, _ -> Nil
   }
-  |> actor.start()
+
+  result
 }
 
 /// Returns a child specification for running the actor with supervision.
+/// If specified, the `on_start` function will be called after the actor starts or restarts.
 pub fn supervised(
   builder: Builder,
+  on_start: Option(fn(Discoverer) -> Nil),
 ) -> supervision.ChildSpecification(Discoverer) {
+  let builder = Builder(..builder, on_start:)
   supervision.worker(fn() { start(builder) })
 }
 
