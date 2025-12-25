@@ -37,19 +37,16 @@ map_answer(Answer) ->
       false
   end.
 
-map_resource(Resource) ->
-  case Resource#dns_rr.type of
-    ?S_TXT ->
-      {true, map_txt(Resource)};
-    ?S_SRV ->
-      {true, map_srv(Resource)};
-    ?S_A ->
-      {true, map_a(Resource)};
-    ?S_AAAA ->
-      {true, map_aaaa(Resource)};
-    _ ->
-      false
-  end.
+map_resource(#dns_rr{type = ?S_TXT} = R) ->
+  {true, map_txt(R)};
+map_resource(#dns_rr{type = ?S_SRV} = R) ->
+  {true, map_srv(R)};
+map_resource(#dns_rr{type = ?S_A} = R) ->
+  {true, map_a(R)};
+map_resource(#dns_rr{type = ?S_AAAA} = R) ->
+  {true, map_aaaa(R)};
+map_resource(_) ->
+  false.
 
 map_ptr(Record) ->
   ServiceType = unicode:characters_to_binary(Record#dns_rr.domain),

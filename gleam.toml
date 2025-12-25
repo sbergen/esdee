@@ -1,5 +1,5 @@
 name = "esdee"
-version = "1.0.0"
+version = "1.0.1"
 
 description = "Gleam DNS-SD discovery on Erlang"
 licences = ["Apache-2.0"]
