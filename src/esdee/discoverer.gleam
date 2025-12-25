@@ -5,6 +5,7 @@ import esdee.{
 }
 import esdee/dispatcher
 import gleam/erlang/process.{type Subject}
+import gleam/function
 import gleam/otp/actor
 import gleam/otp/supervision
 import gleam/result
@@ -89,7 +90,19 @@ pub fn subscribe_to_service_types(
   discoverer: Discoverer,
   subject: Subject(String),
 ) -> Subscription {
-  let callback = process.send(subject, _)
+  subscribe_to_service_types_mapping(discoverer, subject, function.identity)
+}
+
+/// Subscribes the given subject to all discovered service types,
+/// using the given function to map to another message type.
+/// Note that the same service type might be reported by multiple peers.
+/// You will also need to call `poll_service_types` to discover services quickly.
+pub fn subscribe_to_service_types_mapping(
+  discoverer: Discoverer,
+  subject: Subject(a),
+  mapper: fn(String) -> a,
+) -> Subscription {
+  let callback = fn(msg) { process.send(subject, mapper(msg)) }
   process.send(discoverer.subject, SubscribeToServiceTypes(callback, True))
   ServiceTypeSubscription(callback)
 }
@@ -107,7 +120,24 @@ pub fn subscribe_to_service_details(
   service_type: String,
   subject: Subject(ServiceDescription),
 ) -> Subscription {
-  let callback = process.send(subject, _)
+  subscribe_to_service_details_mapping(
+    discoverer,
+    service_type,
+    subject,
+    function.identity,
+  )
+}
+
+/// Subscribes the given subject to all discovered service details,
+/// using the given function to map to another message type.
+/// You will also need to call `poll_service_details` to discover services quickly.
+pub fn subscribe_to_service_details_mapping(
+  discoverer: Discoverer,
+  service_type: String,
+  subject: Subject(a),
+  mapper: fn(ServiceDescription) -> a,
+) -> Subscription {
+  let callback = fn(msg) { process.send(subject, mapper(msg)) }
   process.send(
     discoverer.subject,
     SubscribeToServiceDetails(service_type, callback, True),
