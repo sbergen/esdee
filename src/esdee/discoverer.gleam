@@ -6,6 +6,7 @@ import esdee.{
 import esdee/dispatcher
 import gleam/erlang/process.{type Subject}
 import gleam/function
+import gleam/option.{type Option}
 import gleam/otp/actor
 import gleam/otp/supervision
 import gleam/result
@@ -19,19 +20,22 @@ pub opaque type Discoverer {
 /// Starts a DNS-SD service discovery actor with the default timeouts.
 pub fn start(
   options: Options,
+  name name: Option(process.Name(Msg)),
 ) -> Result(actor.Started(Discoverer), actor.StartError) {
-  start_with_timeouts(options, 1000, 1000)
+  start_with_timeouts(options, name, 1000, 1000)
 }
 
 /// Returns a child specification for running the actor with supervision.
 pub fn supervised(
   options: Options,
+  name: Option(process.Name(Msg)),
   start_timeout_milliseconds: Int,
   poll_timeout_milliseconds: Int,
 ) -> supervision.ChildSpecification(Discoverer) {
   supervision.worker(fn() {
     start_with_timeouts(
       options,
+      name,
       start_timeout_milliseconds,
       poll_timeout_milliseconds,
     )
@@ -44,29 +48,36 @@ pub fn supervised(
 /// Both should be very fast, as no incoming data is waited for.
 pub fn start_with_timeouts(
   options: Options,
+  name: Option(process.Name(Msg)),
   start_timeout_milliseconds: Int,
   poll_timeout_milliseconds: Int,
 ) -> Result(actor.Started(Discoverer), actor.StartError) {
-  actor.new_with_initialiser(start_timeout_milliseconds, fn(self) {
-    use sockets <- result.try(
-      esdee.set_up_sockets(options)
-      |> result.map_error(esdee.describe_setup_error),
-    )
+  let builder =
+    actor.new_with_initialiser(start_timeout_milliseconds, fn(self) {
+      use sockets <- result.try(
+        esdee.set_up_sockets(options)
+        |> result.map_error(esdee.describe_setup_error),
+      )
 
-    let selctor =
-      process.new_selector()
-      |> process.select(self)
-      |> esdee.select_processed_udp_messages(UpdUpdate)
+      let selctor =
+        process.new_selector()
+        |> process.select(self)
+        |> esdee.select_processed_udp_messages(UpdUpdate)
 
-    use _ <- result.try(receive_next_datagram_as_message(sockets))
+      use _ <- result.try(receive_next_datagram_as_message(sockets))
 
-    Ok(
-      actor.initialised(State(options, sockets, dispatcher.new()))
-      |> actor.selecting(selctor)
-      |> actor.returning(Discoverer(self, poll_timeout_milliseconds)),
-    )
-  })
-  |> actor.on_message(handle_message)
+      Ok(
+        actor.initialised(State(options, sockets, dispatcher.new()))
+        |> actor.selecting(selctor)
+        |> actor.returning(Discoverer(self, poll_timeout_milliseconds)),
+      )
+    })
+    |> actor.on_message(handle_message)
+
+  case name {
+    option.Some(name) -> actor.named(builder, name)
+    option.None -> builder
+  }
   |> actor.start()
 }
 
@@ -176,8 +187,8 @@ type State {
   State(options: Options, sockets: Sockets, dispatcher: dispatcher.Dispatcher)
 }
 
-/// The actor messages
-type Msg {
+/// The internal actor message type
+pub opaque type Msg {
   Stop
   SubscribeToServiceTypes(callback: fn(String) -> Nil, subscribe: Bool)
   SubscribeToServiceDetails(
