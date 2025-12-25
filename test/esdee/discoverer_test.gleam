@@ -72,11 +72,12 @@ pub fn unsubscribe_test() {
   let types = process.new_subject()
   let services = process.new_subject()
 
-  discoverer.subscribe_to_service_types(sd, types)
-  discoverer.subscribe_to_service_details(sd, googlecast_type, services)
+  let types_subscription = discoverer.subscribe_to_service_types(sd, types)
+  let details_subscription =
+    discoverer.subscribe_to_service_details(sd, googlecast_type, services)
 
-  discoverer.unsubscribe_from_service_types(sd, types)
-  discoverer.unsubscribe_from_service_details(sd, googlecast_type, services)
+  discoverer.unsubscribe(sd, types_subscription)
+  discoverer.unsubscribe(sd, details_subscription)
 
   // Send datagrams
   device_send(device, datagrams.googlecast_type_answer_bits)

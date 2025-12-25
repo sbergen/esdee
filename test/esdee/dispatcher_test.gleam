@@ -21,12 +21,15 @@ pub fn dispatch_basic_test() {
 
   let dispatcher =
     dispatcher.new()
-    |> dispatcher.subscribe_to_service_types(type_subject)
-    |> dispatcher.subscribe_to_service_details("my-service", details_subject)
-    |> dispatcher.subscribe_to_service_details(
-      "my-other_service",
+    |> dispatcher.subscribe_to_service_types(process.send(type_subject, _))
+    |> dispatcher.subscribe_to_service_details("my-service", process.send(
+      details_subject,
+      _,
+    ))
+    |> dispatcher.subscribe_to_service_details("my-other_service", process.send(
       other_details_subject,
-    )
+      _,
+    ))
 
   let service_type = "my-service"
   let service = fake_service_description("my-service")
@@ -40,14 +43,17 @@ pub fn dispatch_basic_test() {
 
 pub fn subscribe_twice_test() {
   let type_subject = process.new_subject()
+  let type_callback = process.send(type_subject, _)
+
   let details_subject = process.new_subject()
+  let details_callback = process.send(details_subject, _)
 
   let dispatcher =
     dispatcher.new()
-    |> dispatcher.subscribe_to_service_types(type_subject)
-    |> dispatcher.subscribe_to_service_types(type_subject)
-    |> dispatcher.subscribe_to_service_details("my-service", details_subject)
-    |> dispatcher.subscribe_to_service_details("my-service", details_subject)
+    |> dispatcher.subscribe_to_service_types(type_callback)
+    |> dispatcher.subscribe_to_service_types(type_callback)
+    |> dispatcher.subscribe_to_service_details("my-service", details_callback)
+    |> dispatcher.subscribe_to_service_details("my-service", details_callback)
 
   let service_type = "my-service"
   let service = fake_service_description("my-service")
@@ -64,13 +70,14 @@ pub fn subscribe_twice_test() {
 
 pub fn unsubscribe_types_test() {
   let type_subject = process.new_subject()
+  let type_callback = process.send(type_subject, _)
 
   let dispatcher =
     dispatcher.new()
-    |> dispatcher.subscribe_to_service_types(type_subject)
+    |> dispatcher.subscribe_to_service_types(type_callback)
     // Even if subscribed twice
-    |> dispatcher.subscribe_to_service_types(type_subject)
-    |> dispatcher.unsubscribe_from_service_types(type_subject)
+    |> dispatcher.subscribe_to_service_types(type_callback)
+    |> dispatcher.unsubscribe_from_service_types(type_callback)
 
   let service_type = ServiceTypeDiscovered("my-service")
   dispatcher.dispatch(dispatcher, service_type)
@@ -80,25 +87,30 @@ pub fn unsubscribe_types_test() {
 
 pub fn unsubscribe_details_test() {
   let subject_1 = process.new_subject()
+  let callback_1 = process.send(subject_1, _)
+
   let subject_2 = process.new_subject()
+  let callback_2 = process.send(subject_2, _)
+
   let both_subject = process.new_subject()
+  let both_callback = process.send(both_subject, _)
 
   let my_service = fake_service_description("my-service")
   let other_service = fake_service_description("other-service")
 
   let dispatcher =
     dispatcher.new()
-    |> dispatcher.subscribe_to_service_details("my-service", subject_1)
-    |> dispatcher.subscribe_to_service_details("my-service", subject_2)
-    |> dispatcher.subscribe_to_service_details("my-service", both_subject)
-    |> dispatcher.subscribe_to_service_details("other-service", both_subject)
+    |> dispatcher.subscribe_to_service_details("my-service", callback_1)
+    |> dispatcher.subscribe_to_service_details("my-service", callback_2)
+    |> dispatcher.subscribe_to_service_details("my-service", both_callback)
+    |> dispatcher.subscribe_to_service_details("other-service", both_callback)
 
   // Unsubscribe first subscriber, others should still receive
   let dispatcher =
     dispatcher.unsubscribe_from_service_details(
       dispatcher,
       "my-service",
-      subject_1,
+      callback_1,
     )
   dispatcher.dispatch(dispatcher, ServiceDiscovered(my_service))
   assert process.receive(subject_1, receive_timeout) == Error(Nil)
@@ -110,7 +122,7 @@ pub fn unsubscribe_details_test() {
     dispatcher.unsubscribe_from_service_details(
       dispatcher,
       "my-service",
-      both_subject,
+      both_callback,
     )
   dispatcher.dispatch(dispatcher, ServiceDiscovered(other_service))
   assert process.receive(both_subject, receive_timeout) == Ok(other_service)
@@ -120,7 +132,7 @@ pub fn unsubscribe_details_test() {
     dispatcher.unsubscribe_from_service_details(
       dispatcher,
       "my-service",
-      subject_2,
+      callback_2,
     )
   dispatcher.dispatch(dispatcher, ServiceDiscovered(my_service))
 
