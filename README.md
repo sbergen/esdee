@@ -18,7 +18,6 @@ import esdee
 import esdee/discoverer.{type Discoverer}
 import gleam/erlang/process.{type Subject}
 import gleam/io
-import gleam/option
 import glip
 
 type Discovered {
@@ -31,7 +30,8 @@ pub fn main() {
   let assert Ok(sd) =
     esdee.new()
     |> esdee.use_ipv6(True)
-    |> discoverer.start(name: option.None)
+    |> discoverer.build()
+    |> discoverer.start()
   let sd = sd.data
 
   // Set up subjects for both service type and details discovery results

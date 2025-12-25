@@ -4,7 +4,6 @@ import esdee/discoverer.{type Discoverer}
 import esdee_test.{on_ci}
 import gleam/bool
 import gleam/erlang/process
-import gleam/option.{None}
 import gleam/result
 import glip.{type AddressFamily, type IpAddress, Ipv4, Ipv6}
 import toss.{type Socket}
@@ -20,7 +19,8 @@ fn new(family: AddressFamily) -> #(Discoverer, FakeDevice) {
     esdee.new()
     |> esdee.using_port(test_port)
     |> esdee.use_address_families([family])
-    |> discoverer.start(None)
+    |> discoverer.build()
+    |> discoverer.start()
 
   let device = start_fake_device(family)
 

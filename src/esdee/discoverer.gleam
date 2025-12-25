@@ -6,7 +6,7 @@ import esdee.{
 import esdee/dispatcher
 import gleam/erlang/process.{type Subject}
 import gleam/function
-import gleam/option.{type Option}
+import gleam/option.{type Option, None, Some}
 import gleam/otp/actor
 import gleam/otp/supervision
 import gleam/result
@@ -17,45 +17,50 @@ pub opaque type Discoverer {
   Discoverer(subject: Subject(Msg), poll_timeout: Int)
 }
 
-/// Starts a DNS-SD service discovery actor with the default timeouts.
+pub opaque type Builder {
+  Builder(
+    options: Options,
+    name: Option(process.Name(Msg)),
+    start_timeout: Int,
+    poll_timeout: Int,
+  )
+}
+
+/// Sets a timeout for the actor to start.
+/// Should be very fast, as no incoming data is waited for.
+pub fn start_timeout(builder: Builder, timeout: Int) -> Builder {
+  Builder(..builder, start_timeout: timeout)
+}
+
+/// Sets a timeout for the actor to respond to poll requests
+/// Should be very fast, as no incoming data is waited for.
+pub fn poll_timeout(builder: Builder, timeout: Int) -> Builder {
+  Builder(..builder, poll_timeout: timeout)
+}
+
+/// Starts building a discoverer from the base options.
+pub fn build(options: Options) -> Builder {
+  Builder(options, None, 1000, 1000)
+}
+
+pub fn named(
+  builder: Builder,
+  name: process.Name(Msg),
+) -> #(Builder, Discoverer) {
+  let subject = process.named_subject(name)
+  let discoverer = Discoverer(subject, builder.poll_timeout)
+  let builder = Builder(..builder, name: Some(name))
+  #(builder, discoverer)
+}
+
+/// Starts a DNS-SD service discovery actor
 pub fn start(
-  options: Options,
-  name name: Option(process.Name(Msg)),
+  builder: Builder,
 ) -> Result(actor.Started(Discoverer), actor.StartError) {
-  start_with_timeouts(options, name, 1000, 1000)
-}
-
-/// Returns a child specification for running the actor with supervision.
-pub fn supervised(
-  options: Options,
-  name: Option(process.Name(Msg)),
-  start_timeout_milliseconds: Int,
-  poll_timeout_milliseconds: Int,
-) -> supervision.ChildSpecification(Discoverer) {
-  supervision.worker(fn() {
-    start_with_timeouts(
-      options,
-      name,
-      start_timeout_milliseconds,
-      poll_timeout_milliseconds,
-    )
-  })
-}
-
-/// Starts a DNS-SD service discovery actor with custom timeouts.
-/// The timeouts apply to the actor startup, 
-/// and it responding to poll requests respectively.
-/// Both should be very fast, as no incoming data is waited for.
-pub fn start_with_timeouts(
-  options: Options,
-  name: Option(process.Name(Msg)),
-  start_timeout_milliseconds: Int,
-  poll_timeout_milliseconds: Int,
-) -> Result(actor.Started(Discoverer), actor.StartError) {
-  let builder =
-    actor.new_with_initialiser(start_timeout_milliseconds, fn(self) {
+  let actor_builder =
+    actor.new_with_initialiser(builder.start_timeout, fn(self) {
       use sockets <- result.try(
-        esdee.set_up_sockets(options)
+        esdee.set_up_sockets(builder.options)
         |> result.map_error(esdee.describe_setup_error),
       )
 
@@ -67,18 +72,25 @@ pub fn start_with_timeouts(
       use _ <- result.try(receive_next_datagram_as_message(sockets))
 
       Ok(
-        actor.initialised(State(options, sockets, dispatcher.new()))
+        actor.initialised(State(builder.options, sockets, dispatcher.new()))
         |> actor.selecting(selctor)
-        |> actor.returning(Discoverer(self, poll_timeout_milliseconds)),
+        |> actor.returning(Discoverer(self, builder.poll_timeout)),
       )
     })
     |> actor.on_message(handle_message)
 
-  case name {
-    option.Some(name) -> actor.named(builder, name)
-    option.None -> builder
+  case builder.name {
+    Some(name) -> actor.named(actor_builder, name)
+    None -> actor_builder
   }
   |> actor.start()
+}
+
+/// Returns a child specification for running the actor with supervision.
+pub fn supervised(
+  builder: Builder,
+) -> supervision.ChildSpecification(Discoverer) {
+  supervision.worker(fn() { start(builder) })
 }
 
 /// Stops the service discovery actor.
