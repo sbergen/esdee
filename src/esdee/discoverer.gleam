@@ -3,7 +3,7 @@
 import esdee.{
   type Options, type ServiceDescription, type Sockets, type UdpMessage,
 }
-import esdee/dispatcher
+import esdee/internal/dispatcher
 import gleam/erlang/process.{type Subject}
 import gleam/function
 import gleam/option.{type Option, None, Some}
@@ -17,6 +17,7 @@ pub opaque type Discoverer {
   Discoverer(subject: Subject(Msg), poll_timeout: Int)
 }
 
+/// A type for building the options for starting a discovery actor.
 pub opaque type Builder {
   Builder(
     options: Options,
@@ -33,7 +34,7 @@ pub fn start_timeout(builder: Builder, timeout: Int) -> Builder {
   Builder(..builder, start_timeout: timeout)
 }
 
-/// Sets a timeout for the actor to respond to poll requests
+/// Sets a timeout for the actor to respond to poll requests.
 /// Should be very fast, as no incoming data is waited for.
 pub fn poll_timeout(builder: Builder, timeout: Int) -> Builder {
   Builder(..builder, poll_timeout: timeout)
@@ -44,6 +45,8 @@ pub fn build(options: Options) -> Builder {
   Builder(options, None, 1000, 1000, None)
 }
 
+/// Configures the builder to use a named process with the actor,
+/// and returns a discoverer instance that can be used across potential restarts.
 pub fn named(
   builder: Builder,
   name: process.Name(Msg),
@@ -110,6 +113,7 @@ pub fn stop(discoverer: Discoverer) -> Nil {
   process.send(discoverer.subject, Stop)
 }
 
+/// A handle that can be used to unsubscribe from updates.
 pub opaque type Subscription {
   ServiceTypeSubscription(callback: fn(String) -> Nil)
   ServiceDetailsSubscription(
@@ -211,7 +215,7 @@ type State {
   State(options: Options, sockets: Sockets, dispatcher: dispatcher.Dispatcher)
 }
 
-/// The internal actor message type
+/// The internal actor message type (required to be visible for naming the process).
 pub opaque type Msg {
   Stop
   SubscribeToServiceTypes(callback: fn(String) -> Nil, subscribe: Bool)

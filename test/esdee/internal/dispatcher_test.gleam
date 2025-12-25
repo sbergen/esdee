@@ -2,7 +2,7 @@ import esdee.{
   type ServiceDescription, ServiceDescription, ServiceDiscovered,
   ServiceTypeDiscovered,
 }
-import esdee/dispatcher
+import esdee/internal/dispatcher
 import gleam/erlang/process
 import glip
 

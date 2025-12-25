@@ -12,20 +12,20 @@ import glip.{type AddressFamily, type IpAddress, Ipv4, Ipv6}
 import toss
 
 /// The meta-service type for polling for all services
-/// (_services._dns-sd._udp.local).
+/// (`_services._dns-sd._udp.local`).
 pub const all_services_type = "_services._dns-sd._udp.local"
 
 /// Describes a service fully discovered via DNS-SD.
 /// Note that the same service might be discovered through both IPv4 and IPv6.
 pub type ServiceDescription {
   ServiceDescription(
-    /// The service type string, e.g. _googlecast._tcp.local
+    /// The service type string, e.g. `_googlecast._tcp.local`
     service_type: String,
     /// The unique instance name for a peer providing the service, e.g.
-    /// SHIELD-Android-TV-9693d58e3537dddb118b7b7d17f9c1c2._googlecast._tcp.local
+    /// `SHIELD-Android-TV-9693d58e3537dddb118b7b7d17f9c1c2._googlecast._tcp.local`
     instance_name: String,
     /// The target host name, which can be used to actually connect to the service, e.g.
-    /// 9693d58e-3537-dddb-118b-7b7d17f9c1c2.local
+    /// `9693d58e-3537-dddb-118b-7b7d17f9c1c2.local`
     target_name: String,
     /// The priority of the target host, lower value means more preferred.
     /// Originates from the SRV record.

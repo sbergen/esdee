@@ -18,7 +18,7 @@ pub fn on_ci() -> Bool {
 
 pub fn check_example_test() {
   assert checkmark.new(simplifile.read, simplifile.write)
-    |> checkmark.file("README.md")
+    |> checkmark.document("README.md")
     |> checkmark.should_contain_contents_of(
       "./dev/esdee_dev.gleam",
       tagged: "gleam",
